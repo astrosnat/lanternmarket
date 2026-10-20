@@ -121,20 +121,12 @@ export class Wanderer {
     body.position.y = -0.3;
     tumble.add(body);
 
-    const legGeo = new THREE.CylinderGeometry(0.04, 0.045, 0.13, 8);
-    legGeo.translate(0, -0.065, 0);
-    const legs = [-1, 1].map((s) => {
-      const l = new THREE.Mesh(legGeo, dark);
-      l.position.set(s * 0.08, 0.13, 0);
-      body.add(l);
-      return l;
-    });
-
+    // No legs: the robe reaches the ground.
     const robePivot = new THREE.Group();
     robePivot.position.y = 0.55;
     body.add(robePivot);
-    const robeGeo = new THREE.ConeGeometry(0.27, 0.48, 22);
-    robeGeo.translate(0, -0.19, 0);
+    const robeGeo = new THREE.ConeGeometry(0.32, 0.6, 22);
+    robeGeo.translate(0, -0.24, 0);
     robePivot.add(new THREE.Mesh(robeGeo, robe));
 
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 20, 14), dark);
@@ -179,7 +171,7 @@ export class Wanderer {
 
     root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     scene.add(root);
-    this.model = { root, tumble, body, legs, robePivot, hoodPivot, arms, neck };
+    this.model = { root, tumble, body, robePivot, hoodPivot, arms, neck };
   }
 
   // ---------------------------------------------------------------- physics
@@ -509,23 +501,11 @@ export class Wanderer {
     m.robePivot.rotation.x = this.hem.x;
     m.robePivot.rotation.z = this.hem.y;
 
-    // Legs and body bob.
+    // Body bob.
     let bob = 0;
-    if (climbing) {
-      const a = Math.sin(this.climbPhase);
-      m.legs[0].rotation.x = -0.6 + a * 0.5;
-      m.legs[1].rotation.x = -0.6 - a * 0.5;
-    } else if (this.grounded && speed > 0.1) {
+    if (!climbing && this.grounded && speed > 0.1) {
       this.walkPhase += speed * dt * 5.2;
-      const amp = Math.min(1, speed / 2.5) * 0.9;
-      m.legs[0].rotation.x = Math.sin(this.walkPhase) * amp;
-      m.legs[1].rotation.x = -Math.sin(this.walkPhase) * amp;
       bob = Math.abs(Math.sin(this.walkPhase)) * 0.035 * Math.min(1, speed / 2);
-    } else if (!this.grounded) {
-      m.legs[0].rotation.x = m.legs[1].rotation.x = this.gliding ? 0.5 : -0.3;
-    } else {
-      m.legs[0].rotation.x *= 0.85;
-      m.legs[1].rotation.x *= 0.85;
     }
     if (this.hicT > 0) bob += Math.sin((this.hicT / 0.35) * Math.PI) * 0.12;
     m.body.position.y = -0.3 + bob;
