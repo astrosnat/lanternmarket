@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { wakeUniforms, toonMat, haloTexture } from './materials.js';
 import { DISTRICT_BOUNDS } from './world.js';
 import { BIG_FALL } from './wanderer.js';
+import { Particles } from './particles.js';
 
 // Core loop: chirp to find → carry fragments → light the lantern → colour floods in.
 
@@ -10,8 +11,14 @@ const damp = (dt, tau) => 1 - Math.exp(-dt / tau);
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
 export const DISTRICTS = [
-  { name: 'The Piazza & Market Building', hue: '#ffb347', fog: '#f1d1a3', maxRadius: 64, unlocks: 'stpauls' },
-  { name: "St Paul's Church", hue: '#b9a3e3', fog: '#dcd3ea', maxRadius: 46, unlocks: null },
+  {
+    name: 'The Piazza & Market Building', hue: '#ffb347', fog: '#f1d1a3', maxRadius: 64, unlocks: 'stpauls',
+    petals: ['#ff9fb2', '#ffc56b', '#ffe1e6', '#ff8a5c'],
+  },
+  {
+    name: "St Paul's Church", hue: '#b9a3e3', fog: '#dcd3ea', maxRadius: 46, unlocks: null,
+    petals: ['#c7b3ef', '#a9c9a0', '#f3eefc'],
+  },
 ];
 
 const ASLEEP_FOG = new THREE.Color('#8d96a6');
@@ -26,6 +33,7 @@ const RIPPLE_SPEED = 18;
 class Lantern {
   constructor(scene, physics, pos, hue) {
     this.pos = pos.clone();
+    this.coreAt = V(pos.x, pos.y + 0.85, pos.z);
     this.hue = new THREE.Color(hue);
     this.fill = 0;
     this.lit = false;
@@ -67,7 +75,7 @@ class Lantern {
   }
 
   get corePos() {
-    return V(this.pos.x, this.pos.y + 0.85, this.pos.z);
+    return this.coreAt.clone();
   }
 
   update(dt, t, needed) {
@@ -307,6 +315,18 @@ export class Game {
 
     this.fogColor = ASLEEP_FOG.clone();
 
+    this.particles = new Particles(scene);
+    this.lastStep = 0;
+    this.fxCtx = {
+      player: this.player,
+      districtAt: (x, z) => this.districtAt(x, z),
+      wakeAt: (x, z) => this.wakeAt(x, z),
+      hueOf: (d) => this.districts[d].hueColor,
+      petalColors: (d) => this.districts[d].petals,
+      lanterns: this.districts.map((d) => d.lantern),
+      carried: [],
+    };
+
     this.fragCtx = {
       player: this.player,
       carryTarget: (f, t) => this.carryTarget(f, t),
@@ -322,9 +342,13 @@ export class Game {
       onJump: () => audio.jump(),
       onLand: (fall, impact) => {
         audio.land(impact);
+        this.particles.puff(wanderer.pos, impact, this.wakeAt(wanderer.pos.x, wanderer.pos.z));
         if (fall > BIG_FALL) this.dropFragments();
       },
-      onTrip: () => audio.trip(),
+      onTrip: () => {
+        audio.trip();
+        this.particles.puff(wanderer.pos, 0.5, this.wakeAt(wanderer.pos.x, wanderer.pos.z));
+      },
       onMantle: () => {},
       onGrab: () => {},
     };
@@ -350,6 +374,16 @@ export class Game {
 
   districtAt(x, z) {
     return DISTRICT_BOUNDS.findIndex(([x0, z0, x1, z1]) => x >= x0 && x < x1 && z >= z0 && z < z1);
+  }
+
+  /** How woken (0..1) the ground at x, z is; matches the wake shader. */
+  wakeAt(x, z) {
+    const i = this.districtAt(x, z);
+    if (i < 0) return 0;
+    const r = wakeUniforms.uWakeRadius.value[i];
+    if (r <= 0) return 0;
+    const L = this.districts[i].lantern.pos;
+    return 1 - THREE.MathUtils.smoothstep(Math.hypot(x - L.x, z - L.z), r - 8, r);
   }
 
   update(dt, inp) {
@@ -384,6 +418,19 @@ export class Game {
     for (const d of this.districts) d.lantern.update(dt, this.time, d.needed);
     this.ripples = this.ripples.filter((r) => r.update(dt));
     this.bursts = this.bursts.filter((b) => b.update(dt));
+
+    // Little dust puffs from running feet.
+    const step = Math.floor(w.walkPhase / Math.PI);
+    if (step !== this.lastStep) {
+      this.lastStep = step;
+      const speed = Math.hypot(w.vel.x, w.vel.z);
+      if (w.grounded && w.state === 'move' && speed > 2.5) {
+        this.particles.puff(w.pos, 0.05 + 0.1 * Math.min(1, (speed - 2.5) / 2), this.wakeAt(w.pos.x, w.pos.z));
+      }
+    }
+    this.fxCtx.carried.length = 0;
+    for (const f of this.fragments) if (f.state === 'carried') this.fxCtx.carried.push(f.pos);
+    this.particles.update(dt, this.time, this.fxCtx);
 
     // Colour waves.
     for (const d of this.districts) {
@@ -449,6 +496,7 @@ export class Game {
     w.scarfFx.flash = 0.4;
     const origin = V(w.pos.x, w.pos.y + 0.35, w.pos.z);
     this.ripples.push(new Ripple(this.scene, origin, radius));
+    this.particles.chirp(origin, h / CHIRP_MAX_HOLD);
     this.chirpLight.position.copy(origin);
     this.chirpLight.intensity = 6 + h * 10;
 

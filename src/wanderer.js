@@ -87,6 +87,7 @@ export class Wanderer {
     this.hicT = 0;
     this.idleT = 0;
     this.lastWish = 0;
+    this.blinkT = 3;
 
     this.hooks = {};
     this.buildModel(scene);
@@ -108,9 +109,12 @@ export class Wanderer {
   // ---------------------------------------------------------------- model
 
   buildModel(scene) {
-    const robe = toonMat('#c4523a');
-    const robeLight = toonMat('#dc6f4e');
-    const dark = toonMat('#2b2230');
+    const robe = toonMat('#c4523a', { rim: 0.45 });
+    const robeLight = toonMat('#dc6f4e', { rim: 0.45 });
+    const hoodMat = toonMat('#dc6f4e', { rim: 0.45, side: THREE.DoubleSide });
+    const trim = toonMat('#f2d7a6', { rim: 0.3 });
+    const gold = toonMat('#ffd36b', { rim: 0.5, emissive: '#5a3a08' });
+    const dark = toonMat('#2b2230', { rim: 0.35, rimColor: '#ffd9a8' });
     const eyeMat = new THREE.MeshBasicMaterial({ color: '#fff6dc' });
 
     const root = new THREE.Group();
@@ -125,29 +129,40 @@ export class Wanderer {
     const robePivot = new THREE.Group();
     robePivot.position.y = 0.55;
     body.add(robePivot);
-    const robeGeo = new THREE.ConeGeometry(0.32, 0.6, 22);
-    robeGeo.translate(0, -0.24, 0);
-    robePivot.add(new THREE.Mesh(robeGeo, robe));
+    // Bell-shaped robe: narrow at the neck, flaring out to a lipped hem.
+    const robeProfile = [
+      [0, -0.53], [0.3, -0.54], [0.335, -0.52], [0.315, -0.47], [0.275, -0.37],
+      [0.225, -0.25], [0.175, -0.13], [0.125, -0.03], [0.085, 0.05], [0, 0.07],
+    ].map(([x, y]) => new THREE.Vector2(x, y));
+    robePivot.add(new THREE.Mesh(new THREE.LatheGeometry(robeProfile, 26), robe));
+    const hemTrim = new THREE.Mesh(new THREE.TorusGeometry(0.318, 0.02, 6, 32), trim);
+    hemTrim.rotation.x = Math.PI / 2;
+    hemTrim.position.y = -0.495;
+    robePivot.add(hemTrim);
 
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 20, 14), dark);
     head.position.y = 0.64;
     body.add(head);
 
-    for (const s of [-1, 1]) {
+    const eyes = [-1, 1].map((s) => {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), eyeMat);
       eye.position.set(s * 0.055, 0.645, 0.138);
       body.add(eye);
-    }
+      return eye;
+    });
+
+    // Little clasp where the scarf is tied.
+    const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), gold);
+    clasp.position.set(0, 0.53, 0.125);
+    body.add(clasp);
 
     const hoodPivot = new THREE.Group();
     hoodPivot.position.y = 0.64;
     body.add(hoodPivot);
     const hood = new THREE.Mesh(
       new THREE.SphereGeometry(0.19, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.64),
-      robeLight,
+      hoodMat,
     );
-    hood.material = robeLight.clone();
-    hood.material.side = THREE.DoubleSide;
     hoodPivot.add(hood);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.2, 10), robeLight);
     tip.position.set(0, 0.16, -0.1);
@@ -171,7 +186,7 @@ export class Wanderer {
 
     root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     scene.add(root);
-    this.model = { root, tumble, body, robePivot, hoodPivot, arms, neck };
+    this.model = { root, tumble, body, robePivot, hoodPivot, arms, neck, eyes };
   }
 
   // ---------------------------------------------------------------- physics
@@ -552,6 +567,13 @@ export class Wanderer {
       m.arms[1].visible = true;
       m.arms[1].rotation.set(-2.4, 0, -0.5);
     }
+
+    // Blink every few seconds; squeeze shut while charging a big chirp.
+    this.blinkT -= dt;
+    if (this.blinkT < -0.13) this.blinkT = 2 + Math.random() * 3.5;
+    const blink = this.blinkT < 0 ? 0.1 : 1;
+    const eyeY = Math.min(blink, 1 - this.chirpCharge * 0.8);
+    m.eyes[0].scale.y = m.eyes[1].scale.y = eyeY;
 
     m.root.updateMatrixWorld(true);
     m.neck.getWorldPosition(_neck);

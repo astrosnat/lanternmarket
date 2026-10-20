@@ -93,6 +93,7 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  game.particles.setScale((h * renderer.getPixelRatio()) / 2);
 }
 addEventListener('resize', resize);
 resize();

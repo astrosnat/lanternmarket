@@ -28,7 +28,7 @@ npm run build    # static build in dist/, works offline
 - [x] 2. Climbing: grab any surface, scarf stamina, ledges/awnings as rest points, mantle
 - [x] 3. Chirp + colour: ripple, lantern lighting, saturation wave per district
 - [x] 4. Fragments: 5 in the Piazza, 3 at St Paul's; carry, drop on big falls, deposit to unlock
-- [ ] 5. Look pass (wanderer model, particles, real music layers)
+- [x] 5. Look pass: rim-lit wanderer model, particles (motes, petals, lantern sparks, dust), composed music layers
 - [~] 6. Comedy pass: trips, hood flops, hiccups done; pigeon friend to do
 - [ ] 7. Playtest slice, then districts 2–8
 
@@ -37,7 +37,8 @@ npm run build    # static build in dist/, works offline
 - `src/world.js` — grey-box Piazza, Market Building, terraces, St Paul's, fog walls, fragment spots
 - `src/wanderer.js` — movement/climb controller and procedural animation
 - `src/scarf.js` — scarf rope; its lit length is the stamina meter
+- `src/particles.js` — dust motes, petals, lantern sparks, footstep and landing puffs
 - `src/camera.js` — spring-damped third-person camera
 - `src/game.js` — chirp, fragments, lanterns, colour waves, atmosphere
-- `src/materials.js` — toon materials with the shared "wake" shader patch
-- `src/audio.js` — synthesised chirps, ambience and score (D major pentatonic)
+- `src/materials.js` — toon materials with the shared "wake" shader patch and rim light
+- `src/audio.js` — synthesised chirps, ambience and score (D major pentatonic): Piazza accordion + oom-pah, St Paul's carillon + choir

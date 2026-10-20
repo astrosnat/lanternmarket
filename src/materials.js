@@ -97,9 +97,37 @@ export function worldMat(color, { emissive = 0x000000 } = {}) {
   return m;
 }
 
-/** Plain toon material (always in colour) for the wanderer and lanterns. */
-export function toonMat(color, opts = {}) {
-  return new THREE.MeshToonMaterial({ color, gradientMap: toonGradient(), ...opts });
+const RIM_FRAGMENT = /* glsl */ `
+{
+  float lmFres = 1.0 - max(dot(normal, normalize(vViewPosition)), 0.0);
+  outgoingLight += uRimColor * smoothstep(0.55, 0.8, lmFres) * uRimStrength;
+}
+#include <opaque_fragment>
+`;
+
+function patchRim(material, color, strength) {
+  const uniforms = {
+    uRimColor: { value: new THREE.Color(color) },
+    uRimStrength: { value: strength },
+  };
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;')
+      .replace('#include <opaque_fragment>', RIM_FRAGMENT);
+  };
+  material.customProgramCacheKey = () => 'lm-rim';
+  material.userData.rim = uniforms;
+  return material;
+}
+
+/**
+ * Plain toon material (always in colour) for the wanderer and lanterns.
+ * Pass `rim` (strength) for a soft rim light that lifts it off the grey city.
+ */
+export function toonMat(color, { rim, rimColor = '#fff1d6', ...opts } = {}) {
+  const m = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient(), ...opts });
+  return rim ? patchRim(m, rimColor, rim) : m;
 }
 
 let haloTex;
