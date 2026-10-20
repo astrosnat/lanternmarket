@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 const DIM = new THREE.Color('#5e5446');
-const BRIGHT = new THREE.Color('#ffe39a');
+const BRIGHT = new THREE.Color('#5c0061');
 const _dir = new THREE.Vector3();
 const _toCam = new THREE.Vector3();
 const _side = new THREE.Vector3();
@@ -29,7 +29,14 @@ export class Scarf {
     geo.setIndex(idx);
     this.mesh = new THREE.Mesh(
       geo,
-      new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false }),
+      new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+      }),
     );
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
@@ -46,20 +53,20 @@ export class Scarf {
 
   update(dt, anchor, body, charge, lengthScale, gliding, camPos, time) {
     const seg = 0.075 * lengthScale;
-    const g = gliding ? 1.0 : -7.5;
+    const g = gliding ? 1.5 : -2.5;
     const dt2 = dt * dt;
-    const flutter = gliding ? 0.006 : 0.0015;
+    const flutter = gliding ? 0.004 : 0.0012;
 
     this.p[0].copy(anchor);
     this.q[0].copy(anchor);
     for (let i = 1; i < this.n; i++) {
       const p = this.p[i];
       const q = this.q[i];
-      const vx = (p.x - q.x) * 0.95;
-      const vy = (p.y - q.y) * 0.95;
-      const vz = (p.z - q.z) * 0.95;
+      const vx = (p.x - q.x) * 0.92;
+      const vy = (p.y - q.y) * 0.92;
+      const vz = (p.z - q.z) * 0.92;
       q.copy(p);
-      const f = Math.sin(time * 9 + i * 0.7) * flutter * (i / this.n);
+      const f = Math.sin(time * 2.2 + i * 0.4) * flutter * (i / this.n);
       p.x += vx + f;
       p.y += vy + g * dt2 + f;
       p.z += vz - f;
@@ -97,7 +104,7 @@ export class Scarf {
       _side.crossVectors(_dir, _toCam);
       const sl = _side.length();
       if (sl < 1e-6) _side.set(0.05, 0, 0);
-      else _side.multiplyScalar((0.038 * (1 - (i / this.n) * 0.45)) / sl);
+      else _side.multiplyScalar((0.075 * (1 - (i / this.n) * 0.3)) / sl);
       const o = i * 6;
       this.positions[o] = p.x + _side.x;
       this.positions[o + 1] = p.y + _side.y;
