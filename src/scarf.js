@@ -1,11 +1,16 @@
 import * as THREE from 'three';
 
 const DIM = new THREE.Color('#5e5446');
-const BRIGHT = new THREE.Color('#5c0061');
+const BRIGHT = new THREE.Color('#b04cff');
 const _dir = new THREE.Vector3();
 const _toCam = new THREE.Vector3();
 const _side = new THREE.Vector3();
 const _c = new THREE.Color();
+const _vel = new THREE.Vector3();
+const _old = new THREE.Vector3();
+
+const MAX_STEP = 0.04; // fastest a scarf point may move per frame
+const CORRECTION_DAMP = 0.85; // share of constraint corrections not kept as velocity
 
 // A glowing ribbon on a follow-the-leader rope. The lit length of the ribbon
 // is the wanderer's stamina, so the HUD can stay empty.
@@ -53,28 +58,40 @@ export class Scarf {
 
   update(dt, anchor, body, charge, lengthScale, gliding, camPos, time) {
     const seg = 0.075 * lengthScale;
-    const g = gliding ? 1.5 : -2.5;
+    const g = gliding ? 1.0 : -4.0;
     const dt2 = dt * dt;
-    const flutter = gliding ? 0.004 : 0.0012;
+    const flutter = gliding ? 0.0015 : 0.0004;
+    // Frame-rate independent drag; heavy so motion dies out instead of whipping.
+    const drag = Math.exp(-14 * dt);
 
     this.p[0].copy(anchor);
     this.q[0].copy(anchor);
     for (let i = 1; i < this.n; i++) {
       const p = this.p[i];
       const q = this.q[i];
-      const vx = (p.x - q.x) * 0.92;
-      const vy = (p.y - q.y) * 0.92;
-      const vz = (p.z - q.z) * 0.92;
+      _vel.subVectors(p, q).multiplyScalar(drag);
+      const vl = _vel.length();
+      if (vl > MAX_STEP) _vel.multiplyScalar(MAX_STEP / vl);
       q.copy(p);
-      const f = Math.sin(time * 2.2 + i * 0.4) * flutter * (i / this.n);
-      p.x += vx + f;
-      p.y += vy + g * dt2 + f;
-      p.z += vz - f;
+      // One long, slow wave rolling down the scarf, mostly up and down.
+      const f = Math.sin(time * 1.4 - i * 0.18) * flutter * (i / this.n);
+      p.x += _vel.x + f * 0.3;
+      p.y += _vel.y + g * dt2 + f;
+      p.z += _vel.z;
     }
     // Follow-the-leader constraint keeps segment lengths fixed.
     for (let i = 1; i < this.n; i++) {
       const a = this.p[i - 1];
       const b = this.p[i];
+      _old.copy(b);
+      // Bend stiffness: ease toward the midpoint of the neighbours so the
+      // scarf curves broadly instead of kinking.
+      if (i < this.n - 1) {
+        const c = this.p[i + 1];
+        b.x += ((a.x + c.x) * 0.5 - b.x) * 0.2;
+        b.y += ((a.y + c.y) * 0.5 - b.y) * 0.2;
+        b.z += ((a.z + c.z) * 0.5 - b.z) * 0.2;
+      }
       _dir.subVectors(b, a);
       const len = _dir.length() || 1e-5;
       b.copy(a).addScaledVector(_dir, seg / len);
@@ -91,6 +108,10 @@ export class Scarf {
         }
       }
       if (b.y < 0.03) b.y = 0.03;
+      // Most of each correction is not carried over as velocity, so being
+      // pushed back into place doesn't fling the scarf around.
+      _old.subVectors(b, _old);
+      this.q[i].addScaledVector(_old, CORRECTION_DAMP);
     }
 
     // Camera-facing ribbon; lit portion shows remaining charge.
