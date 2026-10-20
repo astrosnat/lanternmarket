@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lantern Market</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #8d96a6; }
+      canvas#game { display: block; width: 100vw; height: 100vh; }
+      #overlay {
+        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: radial-gradient(ellipse at center, rgba(40, 44, 58, 0.25), rgba(30, 32, 44, 0.65));
+        color: #f6efe2; font-family: Georgia, "Times New Roman", serif; cursor: pointer;
+        transition: opacity 0.6s ease; user-select: none;
+      }
+      #overlay.hidden { opacity: 0; pointer-events: none; }
+      .card { text-align: center; max-width: 420px; padding: 24px; }
+      h1 { font-weight: normal; letter-spacing: 0.18em; font-size: 42px; margin: 0 0 12px; }
+      .sub { opacity: 0.75; font-style: italic; margin: 0; animation: breathe 3s ease-in-out infinite; }
+      @keyframes breathe { 50% { opacity: 0.35; } }
+      #pausePanel { margin-top: 28px; font-family: system-ui, sans-serif; font-size: 14px; text-align: left; cursor: default; }
+      #pausePanel table { width: 100%; border-collapse: collapse; opacity: 0.85; }
+      #pausePanel td { padding: 3px 6px; }
+      #pausePanel td:first-child { opacity: 0.6; white-space: nowrap; }
+      #pausePanel .row { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
+      #pausePanel button {
+        background: rgba(255, 255, 255, 0.12); color: inherit; border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="overlay">
+      <div class="card">
+        <h1>Lantern Market</h1>
+        <p class="sub" id="prompt">click to wake</p>
+        <div id="pausePanel" hidden>
+          <table>
+            <tr><td>Move</td><td>WASD / left stick</td></tr>
+            <tr><td>Look</td><td>Mouse / right stick</td></tr>
+            <tr><td>Jump · Glide</td><td>Space / A (hold in air to glide)</td></tr>
+            <tr><td>Chirp</td><td>E / X (hold for a bigger ripple)</td></tr>
+            <tr><td>Climb</td><td>Walk into a wall</td></tr>
+          </table>
+          <div class="row">
+            <label for="sens">Sensitivity</label>
+            <input id="sens" type="range" min="0.3" max="2.5" step="0.05" value="1" />
+            <button id="fullscreen" type="button">Fullscreen</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
