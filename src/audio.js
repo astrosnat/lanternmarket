@@ -211,6 +211,13 @@ export class AudioSys {
     [0, 2, 4].forEach((k, j) => this.bell(SCALE[12 + k], t + j * 0.06, 0.04, 0.7));
   }
 
+  /** A lantern pointing out the fragments still missing: one soft, distant note each. */
+  hint(n) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + 0.4;
+    for (let i = 0; i < n; i++) this.bell(SCALE[14 - i * 2], t + i * 0.35, 0.03, 1.8);
+  }
+
   /** The scarf catching the air by itself: a soft whoosh and a rising chime. */
   unfurl() {
     if (!this.ctx) return;

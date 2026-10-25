@@ -40,8 +40,13 @@ npm run playtest # headless bot plays the whole slice (--all for every player st
 - `src/wanderer.js` — movement/climb controller and procedural animation
 - `src/scarf.js` — scarf rope; its lit length is the stamina meter
 - `src/particles.js` — dust motes, petals, lantern sparks, footstep and landing puffs
+- `src/sky.js` — Milky Way sky dome: grey until every fragment is woken, then colour
 - `src/camera.js` — spring-damped third-person camera
 - `src/game.js` — chirp, fragments, lanterns, colour waves, atmosphere
 - `src/materials.js` — toon materials with the shared "wake" shader patch and rim light
 - `tools/playtest.mjs` — headless playtest bot (real game code, scripted route, blocker report)
 - `src/audio.js` — synthesised chirps, ambience and score (D major pentatonic): Piazza accordion + oom-pah, St Paul's carillon + choir
+
+## Credits
+
+- Night sky: "Milchstraße im Internationalen Sternenpark Westhavelland" by Bautsch, [CC0 / public domain](https://commons.wikimedia.org/wiki/File:Internationaler.Sternenpark.Westhavelland.Hemisphaere.P1024398.jpg), via Wikimedia Commons. Cropped and resized in `public/sky/milky-way.jpg`.

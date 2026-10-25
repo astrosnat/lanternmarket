@@ -244,13 +244,26 @@ export function buildWorld(scene, physics) {
   // ---------------------------------------------------------- fog walls
   const fogMat = new THREE.MeshBasicMaterial({
     color: '#a2aab8', transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, fog: false,
+    vertexColors: true,
   });
+  // Walls thin out with height so they melt into the sky instead of ending in a hard edge.
+  const fogWallGeo = (w, d) => {
+    const g = new THREE.BoxGeometry(w, 40, d, 1, 10, 1);
+    const pos = g.attributes.position;
+    const rgba = new Float32Array(pos.count * 4);
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i) + 20;
+      rgba.set([1, 1, 1, 1 - THREE.MathUtils.smoothstep(y, 8, 38)], i * 4);
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(rgba, 4));
+    return g;
+  };
   const fogWall = (x0, z0, x1, z1) => {
     const w = Math.max(1.2, Math.abs(x1 - x0));
     const d = Math.max(1.2, Math.abs(z1 - z0));
     const cx = (x0 + x1) / 2;
     const cz = (z0 + z1) / 2;
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 40, d), fogMat.clone());
+    const mesh = new THREE.Mesh(fogWallGeo(w, d), fogMat.clone());
     mesh.position.set(cx, 20, cz);
     mesh.renderOrder = 10;
     scene.add(mesh);

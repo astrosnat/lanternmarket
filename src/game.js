@@ -27,14 +27,19 @@ const AWAKE_SUN = new THREE.Color('#ffe6c0');
 const WAVE_TIME = 5;
 const CHIRP_MAX_HOLD = 1.2;
 const RIPPLE_SPEED = 18;
+// Fragment states that count as "still out there" for the lantern's hint.
+const OUT_THERE = new Set(['sleep', 'waking', 'awake', 'returning']);
 
 // ------------------------------------------------------------------ lantern
 
+const SOCKET_EMPTY = new THREE.Color('#6b7080');
+
 class Lantern {
-  constructor(scene, physics, pos, hue) {
+  constructor(scene, physics, pos, hue, needed) {
     this.pos = pos.clone();
     this.coreAt = V(pos.x, pos.y + 0.85, pos.z);
     this.hue = new THREE.Color(hue);
+    this.socketLit = this.hue.clone().lerp(new THREE.Color('#ffffff'), 0.35).multiplyScalar(1.4);
     this.fill = 0;
     this.lit = false;
     this.glow = 0;
@@ -70,6 +75,27 @@ class Lantern {
     this.light.position.y = 0.9;
     g.add(this.light);
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+
+    // A slowly turning ring of sockets, one per fragment the lantern needs,
+    // so "3 of 5" reads at a glance.
+    this.ring = new THREE.Group();
+    this.ring.position.y = 0.85;
+    g.add(this.ring);
+    const beadGeo = new THREE.SphereGeometry(0.11, 12, 10);
+    this.sockets = Array.from({ length: needed }, (_, i) => {
+      const a = (i / needed) * Math.PI * 2;
+      const mat = new THREE.MeshBasicMaterial({ color: SOCKET_EMPTY.clone(), toneMapped: false });
+      const bead = new THREE.Mesh(beadGeo, mat);
+      bead.position.set(Math.cos(a) * 0.75, 0, Math.sin(a) * 0.75);
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: haloTexture(), color: this.hue, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending,
+      }));
+      halo.scale.setScalar(0.8);
+      bead.add(halo);
+      this.ring.add(bead);
+      return { bead, mat, halo, on: 0, pop: 0, popV: 0, filled: false };
+    });
+
     scene.add(g);
     physics.addBox(pos.x, pos.y, pos.z, 1, 1.9, 1);
   }
@@ -86,11 +112,26 @@ class Lantern {
     this.halo.material.opacity = this.glow * 0.9 * flicker;
     this.halo.scale.setScalar(2.4 + this.glow * 2.5);
     this.light.intensity = this.glow * 40 * flicker;
+
+    this.ring.rotation.y += dt * 0.35;
+    this.sockets.forEach((s, i) => {
+      const on = this.lit || i < this.fill ? 1 : 0;
+      if (on && !s.filled) s.popV += 9; // pop as it fills
+      s.filled = !!on;
+      s.on += (on - s.on) * damp(dt, 0.15);
+      s.popV += (-s.pop * 160 - s.popV * 10) * dt;
+      s.pop += s.popV * dt;
+      s.mat.color.copy(SOCKET_EMPTY).lerp(this.socketLit, s.on);
+      s.halo.material.opacity = s.on * 0.8 * flicker;
+      s.bead.scale.setScalar(1 + s.pop);
+    });
   }
 }
 
 // ------------------------------------------------------------------ fragments
 
+const HINT_TIME = 4;
+const HINT_BEAM = 14;
 const FRAG_SLEEP = new THREE.Color('#8c93a0');
 const FRAG_AWAKE = new THREE.Color('#fff1b8');
 
@@ -109,10 +150,25 @@ class Fragment {
     this.halo = new THREE.Sprite(new THREE.SpriteMaterial({
       map: haloTexture(), color: '#fff2c2', transparent: true, opacity: 0.1, depthWrite: false, blending: THREE.AdditiveBlending,
     }));
+    // Hint beam: shown when you chirp at an unlit lantern, so you can spot what's left.
+    this.hintWait = 0;
+    this.hintT = 0;
+    const beamGeo = new THREE.CylinderGeometry(0.05, 0.14, HINT_BEAM, 8, 1, true);
+    beamGeo.translate(0, HINT_BEAM / 2, 0);
+    this.beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({
+      color: '#ffe6a8', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+    }));
+    this.beam.visible = false;
     this.group = new THREE.Group();
-    this.group.add(this.mesh, this.halo);
+    this.group.add(this.mesh, this.halo, this.beam);
     this.group.position.copy(pos);
     scene.add(this.group);
+  }
+
+  /** Pulse brightly for a few seconds, starting after `delay` (the wave reaching it). */
+  hint(delay) {
+    this.hintWait = delay;
+    this.hintT = HINT_TIME;
   }
 
   flyTo(target, state, duration, delay = 0) {
@@ -131,6 +187,18 @@ class Fragment {
     this.mesh.rotation.x = Math.sin(this.t * 0.8) * 0.4;
     let haloTarget = awakeLook ? 0.85 : 0.08 + 0.07 * Math.max(0, Math.sin(this.t * 2.3));
     let haloScale = awakeLook ? 1.5 : 0.9;
+
+    if (this.hintWait > 0) this.hintWait -= dt;
+    else if (this.hintT > 0) this.hintT -= dt;
+    const hinting = this.hintWait <= 0 && this.hintT > 0;
+    if (hinting) {
+      const k = Math.min(1, this.hintT / 0.8) * Math.min(1, (HINT_TIME - this.hintT) / 0.15);
+      const pulse = 0.65 + 0.35 * Math.sin(this.t * 7);
+      haloTarget = Math.max(haloTarget, k * pulse);
+      haloScale += k * 2.2 * pulse;
+      this.beam.material.opacity = k * 0.35 * pulse;
+    }
+    this.beam.visible = hinting && this.group.visible;
 
     switch (this.state) {
       case 'waking':
@@ -292,7 +360,7 @@ export class Game {
       fill: 0,
       waveT: -1,
       needed: world.fragmentSpots[i].length,
-      lantern: new Lantern(scene, physics, world.lanterns[i], d.hue),
+      lantern: new Lantern(scene, physics, world.lanterns[i], d.hue, world.fragmentSpots[i].length),
     }));
     this.districts.forEach((d, i) => {
       wakeUniforms.uWakeCenter.value[i].copy(d.lantern.pos);
@@ -356,6 +424,11 @@ export class Game {
       onMantle: () => {},
       onGrab: () => {},
     };
+  }
+
+  /** Every fragment in the slice has been woken by a chirp (collected ones count). */
+  get allWoken() {
+    return this.fragments.every((f) => f.state !== 'sleep' && f.state !== 'waking');
   }
 
   get carried() {
@@ -529,12 +602,17 @@ export class Game {
       }
       const carried = this.carried.filter((f) => f.district === d.id);
       carried.forEach((f, i) => f.flyTo(L.corePos, 'depositing', 0.9, i * 0.25));
+      // Point out the ones still out there: they pulse in a wave spreading from the lantern.
+      const left = this.fragments.filter((f) => f.district === d.id && OUT_THERE.has(f.state));
+      left.forEach((f) => f.hint(0.4 + f.pos.distanceTo(L.coreAt) / 30));
+      if (left.length) this.audio.hint(left.length);
     }
   }
 
   onDeposited(f) {
     const d = this.districts[f.district];
     d.fill++;
+    d.lantern.fill = d.fill;
     this.audio.deposit(d.fill);
     this.bursts.push(new Burst(this.scene, d.lantern.corePos, d.hue, 40, 2));
     if (d.fill >= d.needed && !d.lit) this.lightDistrict(d);

@@ -6,6 +6,7 @@ import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { AudioSys } from './audio.js';
 import { Game } from './game.js';
+import { Sky } from './sky.js';
 
 const canvas = document.querySelector('#game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -67,6 +68,7 @@ const input = new Input(canvas);
 const follow = new FollowCamera(camera, physics);
 follow.snap(wanderer);
 const game = new Game({ scene, physics, world, wanderer, audio, sun, hemi });
+const sky = new Sky(scene);
 
 // ------------------------------------------------------------ pause / overlay
 
@@ -155,8 +157,9 @@ function frame(now) {
   wanderer.animate(paused ? 0 : dt, camera.position, t);
 
   placeSun();
+  sky.update(dt, camera, scene.fog.color, game.allWoken);
   renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);
 
-if (import.meta.env.DEV) window.__lm = { wanderer, game, follow, physics, scene, camera };
+if (import.meta.env.DEV) window.__lm = { wanderer, game, follow, physics, scene, camera, sky };
