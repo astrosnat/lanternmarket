@@ -211,6 +211,14 @@ export class AudioSys {
     [0, 2, 4].forEach((k, j) => this.bell(SCALE[12 + k], t + j * 0.06, 0.04, 0.7));
   }
 
+  /** The scarf catching the air by itself: a soft whoosh and a rising chime. */
+  unfurl() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.noise(t, 0.5, 0.04, 900, 'bandpass');
+    [0, 2, 4].forEach((k, j) => this.bell(SCALE[13 + k], t + 0.08 + j * 0.09, 0.035, 1.0));
+  }
+
   lanternLit() {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;

@@ -20,6 +20,7 @@ export class FollowCamera {
     this.focusVel = new THREE.Vector3();
     this.lookUp = 0;
     this.idleLook = 0;
+    this.swingOut = false;
     this.sensitivity = 1;
   }
 
@@ -45,6 +46,12 @@ export class FollowCamera {
       const behind = w.yaw + Math.PI;
       this.yaw += wrap(behind - this.yaw) * damp(dt, 2.2) * Math.min(1, speed / 4);
     }
+    // Climbing with the camera on the wall's side (e.g. after hanging off a roof
+    // edge to climb down): swing round to the open side so the wanderer stays in view.
+    const outward = Math.sin(this.yaw) * w.climbN.x + Math.cos(this.yaw) * w.climbN.z;
+    if (!climbing || this.idleLook === 0 || outward > 0.7) this.swingOut = false;
+    else if (outward < 0.2) this.swingOut = true;
+    if (this.swingOut) this.yaw += wrap(Math.atan2(w.climbN.x, w.climbN.z) - this.yaw) * damp(dt, 0.35);
 
     // Framing: pull back and look up for climbs, widen a little for glides.
     let targetDist = this.dist;

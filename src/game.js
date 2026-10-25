@@ -345,6 +345,10 @@ export class Game {
         this.particles.puff(wanderer.pos, impact, this.wakeAt(wanderer.pos.x, wanderer.pos.z));
         if (fall > BIG_FALL) this.dropFragments();
       },
+      onAutoGlide: () => {
+        audio.unfurl();
+        this.w.scarfFx.flash = 0.8;
+      },
       onTrip: () => {
         audio.trip();
         this.particles.puff(wanderer.pos, 0.5, this.wakeAt(wanderer.pos.x, wanderer.pos.z));
@@ -430,6 +434,7 @@ export class Game {
     }
     this.fxCtx.carried.length = 0;
     for (const f of this.fragments) if (f.state === 'carried') this.fxCtx.carried.push(f.pos);
+    w.carrying = this.fxCtx.carried.length;
     this.particles.update(dt, this.time, this.fxCtx);
 
     // Colour waves.

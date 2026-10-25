@@ -22,13 +22,41 @@ const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 500);
 const hemi = new THREE.HemisphereLight('#d6e2f5', '#7d746b', 1.0);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight('#c9d4e6', 1.3);
-const SUN_OFFSET = new THREE.Vector3(-25, 45, 18);
+const SUN_OFFSET = new THREE.Vector3(-50, 90, 36);
+// The shadow box follows the view: 100 m across at 4096² (~2.4 cm per texel),
+// with a soft PCF radius so cornice and awning shadows don't stair-step.
+const SHADOW_HALF = 50;
+const SHADOW_RES = 4096;
+const SHADOW_TEXEL = (SHADOW_HALF * 2) / SHADOW_RES;
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -35, right: 35, top: 35, bottom: -35, near: 1, far: 140 });
-sun.shadow.bias = -0.0004;
-sun.shadow.normalBias = 0.03;
+sun.shadow.mapSize.set(SHADOW_RES, SHADOW_RES);
+Object.assign(sun.shadow.camera, {
+  left: -SHADOW_HALF, right: SHADOW_HALF, top: SHADOW_HALF, bottom: -SHADOW_HALF, near: 1, far: 260,
+});
+sun.shadow.radius = 3;
+sun.shadow.bias = -0.0005;
+sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
+
+// Light-space basis, for snapping the shadow box to whole texels as it moves
+// (otherwise every shadow edge shimmers while you walk).
+const LIGHT_BASIS = new THREE.Matrix4().lookAt(SUN_OFFSET, new THREE.Vector3(), new THREE.Vector3(0, 1, 0));
+const LIGHT_BASIS_INV = LIGHT_BASIS.clone().invert();
+const _shadowC = new THREE.Vector3();
+const _view = new THREE.Vector3();
+
+function placeSun() {
+  // Centre the box a little ahead of the camera so what you look at is covered.
+  camera.getWorldDirection(_view);
+  _view.y = 0;
+  if (_view.lengthSq() > 1e-6) _view.normalize();
+  _shadowC.copy(wanderer.pos).addScaledVector(_view, SHADOW_HALF * 0.4).applyMatrix4(LIGHT_BASIS_INV);
+  _shadowC.x = Math.round(_shadowC.x / SHADOW_TEXEL) * SHADOW_TEXEL;
+  _shadowC.y = Math.round(_shadowC.y / SHADOW_TEXEL) * SHADOW_TEXEL;
+  _shadowC.applyMatrix4(LIGHT_BASIS);
+  sun.target.position.copy(_shadowC);
+  sun.position.copy(_shadowC).add(SUN_OFFSET);
+}
 
 const physics = new Physics();
 const world = buildWorld(scene, physics);
@@ -126,8 +154,7 @@ function frame(now) {
   }
   wanderer.animate(paused ? 0 : dt, camera.position, t);
 
-  sun.position.copy(wanderer.pos).add(SUN_OFFSET);
-  sun.target.position.copy(wanderer.pos);
+  placeSun();
   renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);

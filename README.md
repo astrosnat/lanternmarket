@@ -9,6 +9,7 @@ See [lantern-market-design-doc.md](lantern-market-design-doc.md).
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # static build in dist/, works offline
+npm run playtest # headless bot plays the whole slice (--all for every player style, --verbose)
 ```
 
 ## Controls
@@ -16,6 +17,7 @@ npm run build    # static build in dist/, works offline
 | Action | Keyboard / mouse | Gamepad |
 | --- | --- | --- |
 | Move | WASD | Left stick |
+| Walk (climb down off edges) | Hold Shift | Push the stick gently |
 | Look | Mouse (click to capture) | Right stick |
 | Jump / glide | Space (hold in air) | A |
 | Chirp | E (hold for a bigger ripple) | X / B |
@@ -30,7 +32,7 @@ npm run build    # static build in dist/, works offline
 - [x] 4. Fragments: 5 in the Piazza, 3 at St Paul's; carry, drop on big falls, deposit to unlock
 - [x] 5. Look pass: rim-lit wanderer model, particles (motes, petals, lantern sparks, dust), composed music layers
 - [~] 6. Comedy pass: trips, hood flops, hiccups done; pigeon friend to do
-- [ ] 7. Playtest slice, then districts 2–8
+- [~] 7. Playtest slice: bot clears it end to end (`tools/playtest.mjs`); human playtest to do; then districts 2–8
 
 ## Layout
 
@@ -41,4 +43,5 @@ npm run build    # static build in dist/, works offline
 - `src/camera.js` — spring-damped third-person camera
 - `src/game.js` — chirp, fragments, lanterns, colour waves, atmosphere
 - `src/materials.js` — toon materials with the shared "wake" shader patch and rim light
+- `tools/playtest.mjs` — headless playtest bot (real game code, scripted route, blocker report)
 - `src/audio.js` — synthesised chirps, ambience and score (D major pentatonic): Piazza accordion + oom-pah, St Paul's carillon + choir

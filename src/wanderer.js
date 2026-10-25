@@ -38,6 +38,12 @@ const SCARF_CLIMB_MOVE = 0.9;
 
 export const BIG_FALL = 6.5;
 
+// Walking (not running) off a drop deeper than this grabs the edge to climb down.
+const EDGE_GRAB_SPEED = RUN * 0.75;
+const EDGE_GRAB_DROP = 3;
+// The first falls that would cost fragments unfurl the scarf by themselves.
+const TEACH_GLIDES = 2;
+
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const damp = (dt, tau) => 1 - Math.exp(-dt / tau);
 const clamp = THREE.MathUtils.clamp;
@@ -65,6 +71,9 @@ export class Wanderer {
     this.airTime = 0;
     this.peakY = 0;
     this.gliding = false;
+    this.autoGlide = false;
+    this.teachGlides = TEACH_GLIDES;
+    this.carrying = 0; // fragments in tow, set by the game
     this.scarfMax = 5;
     this.scarf = 5;
     this.lastLedge = new THREE.Vector3();
@@ -303,7 +312,15 @@ export class Wanderer {
       if (Math.abs(this.vel.y) < APEX_BAND) g *= APEX_MUL;
       if (this.vel.y > 0 && !inp.jumpHeld) g *= 1.8;
       this.vel.y = Math.max(-MAX_FALL, this.vel.y - g * dt);
-      this.gliding = inp.jumpHeld && this.vel.y < 0.4 && this.scarf > 0 && this.airTime > 0.18 && !tripping;
+      // Teach gliding: a fall that would cost fragments unfurls the scarf by itself.
+      if (!this.autoGlide && this.teachGlides > 0 && this.carrying > 0 && !inp.jumpHeld && !tripping &&
+          this.vel.y < -2 && this.scarf > 0.5 && this.peakY - this.physics.floorBelow(this.pos, R) > BIG_FALL) {
+        this.autoGlide = true;
+        this.teachGlides--;
+        this.hooks.onAutoGlide?.();
+      }
+      this.gliding = (inp.jumpHeld || this.autoGlide) && this.vel.y < 0.4 && this.scarf > 0 && this.airTime > 0.18 && !tripping;
+      if (this.gliding && inp.jumpHeld && !this.autoGlide) this.teachGlides = 0; // they've got it
       if (this.gliding) {
         this.vel.y += (-GLIDE_FALL - this.vel.y) * damp(dt, 0.12);
         this.scarf = Math.max(0, this.scarf - SCARF_GLIDE * dt);
@@ -312,6 +329,7 @@ export class Wanderer {
     }
 
     // Integrate: horizontal first (with step-up), then vertical.
+    const prevGround = this.groundC;
     this.wallC = null;
     this.canStep = wasGrounded;
     this.moveAxis('x', this.vel.x * dt);
@@ -327,6 +345,7 @@ export class Wanderer {
       this.coyote = COYOTE;
       this.airTime = 0;
       this.gliding = false;
+      this.autoGlide = false;
       this.scarf = Math.min(this.scarfMax, this.scarf + SCARF_REFILL * dt);
       if (this.groundC && this.groundC.max.y > 1.5) this.lastLedge.copy(this.pos);
 
@@ -340,6 +359,10 @@ export class Wanderer {
       this.airTime += dt;
       this.peakY = Math.max(this.peakY, this.pos.y);
     }
+
+    // Walked (didn't run or jump) off a tall drop: grab the edge and climb down.
+    if (wasGrounded && !this.grounded && prevGround && !tripping && wm > 0.1 && this.scarf > 0.15 &&
+        Math.hypot(this.vel.x, this.vel.z) < EDGE_GRAB_SPEED && this.grabEdge(prevGround)) return;
 
     // Auto-grab: walk into any climbable surface.
     if (!tripping && this.wallC && this.wallC.climbable && this.climbLock <= 0 && this.scarf > 0.15 && wm > 0.3) {
@@ -356,11 +379,53 @@ export class Wanderer {
     }
   }
 
+  /** Hang off the side of `c` we just stepped off, on the wall beneath its edge. */
+  grabEdge(c) {
+    const p = this.pos;
+    const ox = Math.max(p.x - R - c.max.x, c.min.x - p.x - R);
+    const oz = Math.max(p.z - R - c.max.z, c.min.z - p.z - R);
+    const a = ox >= oz ? 'x' : 'z';
+    const s = p[a] > (c.min[a] + c.max[a]) / 2 ? 1 : -1;
+    const top = c.max.y;
+    const edge = s > 0 ? c.max[a] : c.min[a];
+    // Measure the drop where you'd come down, past any narrow cornice just below.
+    const t = _t.copy(p);
+    t[a] = edge + s * 0.8;
+    if (top - this.physics.floorBelow(t, 0.1) < EDGE_GRAB_DROP) return false;
+
+    // The wall may be set back under a roof trim or a lamp: feel inward for it.
+    t.copy(p);
+    let wall = null;
+    for (let o = 0.02; o < 0.8 && !wall; o += 0.05) {
+      t[a] = edge - s * o;
+      wall = this.physics.solidAt(t.x, top - 1.0, t.z);
+    }
+    if (!wall || !wall.climbable) return false;
+    t[a] = (s > 0 ? wall.max[a] : wall.min[a]) + s * (R + EPS);
+    // Hang as high as fits (just under any overhang).
+    let fits = false;
+    for (t.y = top - H - 0.02; t.y > top - H - 1.2 && !fits; ) {
+      fits = this.physics.fits(t, R, H);
+      if (!fits) t.y -= 0.05;
+    }
+    if (!fits) return false;
+
+    this.visualOffset.add(p).sub(t);
+    p.copy(t);
+    this.wallN.set(0, 0, 0);
+    this.wallN[a] = s;
+    this.startClimb();
+    this.peakY = p.y;
+    this.hooks.onEdgeGrab?.();
+    return true;
+  }
+
   startClimb() {
     this.state = 'climb';
     this.climbN.copy(this.wallN);
     this.vel.set(0, 0, 0);
     this.gliding = false;
+    this.autoGlide = false;
     this.grounded = false;
     this.runTime = 0;
     this.hooks.onGrab?.();
@@ -440,7 +505,13 @@ export class Wanderer {
       else if (n[a] < 0) t[a] = c.min[a] + R + 0.06;
       else t[a] = clamp(t[a], c.min[a], c.max[a]);
     }
-    if (!this.physics.fits(t, R, H)) return false;
+    if (!this.physics.fits(t, R, H)) {
+      // Something low sits on the ledge (a lamp cap, a trim): stand on that instead.
+      const top = this.physics.topOf(t, R, H);
+      if (top - c.max.y > STEP) return false;
+      t.y = top + EPS;
+      if (!this.physics.fits(t, R, H)) return false;
+    }
     this.visualOffset.add(this.pos).sub(t);
     this.pos.copy(t);
     this.state = 'move';

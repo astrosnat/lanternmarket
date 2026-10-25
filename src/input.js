@@ -54,6 +54,8 @@ export class Input {
     let my = (this.key('KeyW', 'ArrowUp') ? 1 : 0) - (this.key('KeyS', 'ArrowDown') ? 1 : 0);
     const km = Math.hypot(mx, my);
     if (km > 1) { mx /= km; my /= km; }
+    // Hold Shift to walk: keys are all-or-nothing, and walking off an edge grabs it.
+    if (this.key('ShiftLeft', 'ShiftRight')) { mx *= 0.5; my *= 0.5; }
 
     let jump = this.key('Space');
     let chirp = this.key('KeyE');

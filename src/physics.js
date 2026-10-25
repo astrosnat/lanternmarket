@@ -40,6 +40,29 @@ export class Physics {
     return true;
   }
 
+  /** Highest top of any box the upright box at p overlaps, or -Infinity. */
+  topOf(p, r, h) {
+    let top = -Infinity;
+    for (const c of this.colliders) {
+      if (!c.enabled) continue;
+      if (p.x + r > c.min.x && p.x - r < c.max.x &&
+          p.z + r > c.min.z && p.z - r < c.max.z &&
+          p.y + h > c.min.y && p.y < c.max.y) top = Math.max(top, c.max.y);
+    }
+    return top;
+  }
+
+  /** Height of the highest surface at or below p.y under a footprint of half-width r. */
+  floorBelow(p, r) {
+    let floor = -Infinity;
+    for (const c of this.colliders) {
+      if (!c.enabled || c.max.y > p.y + 0.01) continue;
+      if (p.x + r > c.min.x && p.x - r < c.max.x &&
+          p.z + r > c.min.z && p.z - r < c.max.z) floor = Math.max(floor, c.max.y);
+    }
+    return floor;
+  }
+
   solidAt(x, y, z) {
     for (const c of this.colliders) {
       if (!c.enabled) continue;
