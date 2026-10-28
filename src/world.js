@@ -248,6 +248,92 @@ export function buildWorld(scene, physics) {
   [[-40, -15], [-52, -15], [-64, -12], [-40, 15], [-56, 15], [-66, 8]].forEach(([x, z]) => tree(x, z));
   [[-38, -20], [-60, 20]].forEach(([x, z]) => lamp(x, z));
 
+  // ---------------------------------------------------------- corner groves
+  // Little round trees filling the empty corners between the terraces and the fog.
+  // Every tree is merged into one mesh per colour; canopies are climbable like the
+  // churchyard trees.
+  {
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    };
+    const pick = (a) => a[Math.floor(rand() * a.length)];
+    const GREENS = ['#7fb069', '#8cc084', '#6fa860', '#9bc57a', '#86b86a'];
+    const BLOSSOM = ['#f4a7b9', '#f7c873'];
+    const grove = new Map();
+    const add = (color, geo) => {
+      if (!grove.has(color)) grove.set(color, []);
+      grove.get(color).push(geo);
+    };
+    const puff = (color, x, y, z, r) => {
+      const g = new THREE.SphereGeometry(r, 12, 9);
+      g.scale(1, 0.88, 1);
+      g.translate(x, y, z);
+      add(color, g);
+    };
+
+    const cuteTree = (x, z) => {
+      const s = 0.75 + rand() * 0.5;
+      const trunkH = (1.4 + rand() * 0.8) * s;
+      const trunk = new THREE.CylinderGeometry(0.16 * s, 0.24 * s, trunkH, 8);
+      trunk.translate(x, trunkH / 2, z);
+      add('#6a4a36', trunk);
+      const leaf = rand() < 0.15 ? pick(BLOSSOM) : pick(GREENS);
+      const kind = rand();
+      let top;
+      if (kind < 0.45) {
+        // lollipop
+        const r = (1.1 + rand() * 0.4) * s;
+        puff(leaf, x, trunkH + r * 0.7, z, r);
+        top = trunkH + r * 1.5;
+      } else if (kind < 0.75) {
+        // two stacked puffs
+        const r = (0.95 + rand() * 0.25) * s;
+        puff(leaf, x, trunkH + r * 0.6, z, r);
+        puff(leaf, x + 0.1 * s, trunkH + r * 1.55, z - 0.08 * s, r * 0.72);
+        top = trunkH + r * 2.15;
+      } else {
+        // a cluster of three
+        const r = (0.75 + rand() * 0.2) * s;
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2 + rand();
+          puff(leaf, x + Math.cos(a) * r * 0.6, trunkH + r * (0.7 + (i === 0 ? 0.5 : 0)), z + Math.sin(a) * r * 0.6, r);
+        }
+        top = trunkH + r * 1.9;
+      }
+      physics.addBox(x, 0, z, 0.4 * s, trunkH, 0.4 * s, { camera: false });
+      const w = 2.2 * s;
+      physics.addBox(x, trunkH, z, w, top - trunkH, w, { camera: false });
+    };
+
+    // Jittered grid in each empty corner, skipping anything already standing there.
+    const fill = (x0, z0, x1, z1) => {
+      const step = 3.8;
+      for (let x = x0; x <= x1; x += step) {
+        for (let z = z0; z <= z1; z += step) {
+          const p = V(x + (rand() - 0.5) * 2, 0.01, z + (rand() - 0.5) * 2);
+          if (rand() < 0.15) continue; // leave a few gaps so it isn't a plantation
+          if (!physics.fits(p, 1.3, 3)) continue;
+          cuteTree(p.x, p.z);
+        }
+      }
+    };
+    // Kept ~3 m inside the fog walls so no canopy pokes through them.
+    fill(34, -42, 44, -31); // Piazza, north-east
+    fill(34, 32, 44, 42); // Piazza, south-east
+    fill(-72, -42, -67, -33); // St Paul's, north-west
+    fill(-72, 33, -67, 42); // St Paul's, south-west
+    fill(-33, -42, -29, -33); // St Paul's, north-east
+    fill(-33, 33, -29, 42); // St Paul's, south-east
+
+    for (const [color, geos] of grove) {
+      const mesh = new THREE.Mesh(mergeGeometries(geos), worldMat(color));
+      mesh.castShadow = mesh.receiveShadow = true;
+      scene.add(mesh);
+    }
+  }
+
   // ---------------------------------------------------------- fog walls
   const fogMat = new THREE.MeshBasicMaterial({
     color: '#a2aab8', transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, fog: false,
