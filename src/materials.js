@@ -27,9 +27,18 @@ export function toonGradient() {
 const WAKE_VERTEX_PARS = /* glsl */ `
 varying vec3 vLmWorld;
 varying vec3 vLmNormal;
+varying vec2 vLmUv;
+#if LM_SURFACE == 4
+  attribute float lmId; // one random number per window pane, baked in world.js
+  varying float vLmId;
+#endif
 `;
 
 const WAKE_VERTEX = /* glsl */ `
+vLmUv = uv;
+#if LM_SURFACE == 4
+  vLmId = lmId;
+#endif
 vec4 lmWp = vec4(transformed, 1.0);
 vec3 lmN = objectNormal;
 #ifdef USE_INSTANCING
@@ -43,12 +52,16 @@ vLmNormal = normalize(mat3(modelMatrix) * lmN);
 // Surface detail, painted in world space so it never stretches: brick or stone
 // coursing, plaster grain, per-block tone, and grime (dark feet, streaks under
 // ledges, shaded undersides). Snapped to a few shades so it reads as painted.
-// LM_SURFACE: 0 none, 1 brick, 2 stone, 3 plaster.
-export const SURFACES = { none: 0, brick: 1, stone: 2, plaster: 3 };
+// LM_SURFACE: 0 none, 1 brick, 2 stone, 3 plaster, 4 glass (see GLASS_FRAGMENT).
+export const SURFACES = { none: 0, brick: 1, stone: 2, plaster: 3, glass: 4 };
 const LEDGE_STEP = '3.2'; // terrace cornices every 3.2 m (see world.js)
 
 const SURFACE_PARS = /* glsl */ `
 varying vec3 vLmNormal;
+varying vec2 vLmUv;
+#if LM_SURFACE == 4
+  varying float vLmId;
+#endif
 
 float lmHash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
@@ -122,7 +135,7 @@ float lmSurface(vec3 wp, vec3 n) {
 
 const SURFACE_FRAGMENT = /* glsl */ `
 #include <color_fragment>
-#if LM_SURFACE > 0
+#if LM_SURFACE > 0 && LM_SURFACE < 4
   diffuseColor.rgb *= lmSurface(vLmWorld, normalize(vLmNormal));
 #endif
 `;
@@ -142,6 +155,34 @@ float lmBoxMask(vec4 b, vec2 p) {
 }
 `;
 
+// Window glass: flat and dark asleep (unchanged); once awake, painted reflections
+// on top. Each pane uses its own 0–1 texture coordinates (they survive the merge),
+// so the glints sit inside each window. Two diagonal glint bands slide as the
+// camera moves, a sky gradient lights the top of each pane, and glass seen at a
+// steep angle brightens. All scaled by the wake value, so it arrives with the colour.
+const GLASS_FRAGMENT = /* glsl */ `
+#if LM_SURFACE == 4
+  {
+    vec3 n = normalize(vLmNormal);
+    if (abs(n.y) < 0.5) {
+      vec3 v = normalize(cameraPosition - vLmWorld);
+      vec3 across = normalize(cross(vec3(0.0, 1.0, 0.0), n));
+      float id = vLmId;
+      float d = vLmUv.x + vLmUv.y * 0.55 + dot(v, across) * 0.6 + v.y * 0.3 + id * 0.8;
+      float w = fwidth(d) + 0.01;
+      float f = fract(d);
+      float wide = smoothstep(0.05 - w, 0.05 + w, f) * (1.0 - smoothstep(0.42 - w, 0.42 + w, f));
+      float thin = smoothstep(0.52 - w, 0.52 + w, f) * (1.0 - smoothstep(0.62 - w, 0.62 + w, f));
+      float sky = mix(0.12, 0.5, vLmUv.y);
+      float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+      vec3 refl = vec3(0.72, 0.84, 1.0) * (sky * 0.35 + fres * 0.45)
+                + vec3(1.0, 0.98, 0.92) * (wide * 0.45 + thin * 0.75);
+      outgoingLight = mix(outgoingLight, outgoingLight * 0.6 + refl, wake);
+    }
+  }
+#endif
+`;
+
 const WAKE_FRAGMENT = /* glsl */ `
 {
   float wake = 0.0;
@@ -158,6 +199,7 @@ const WAKE_FRAGMENT = /* glsl */ `
   float lum = dot(outgoingLight, vec3(0.299, 0.587, 0.114));
   vec3 asleep = vec3(lum) * vec3(0.78, 0.84, 0.97) * 0.86;
   outgoingLight = mix(asleep, outgoingLight, wake) + edgeGlow * 0.7;
+${GLASS_FRAGMENT}
 }
 #include <opaque_fragment>
 `;

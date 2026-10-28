@@ -28,17 +28,22 @@ export function buildWorld(scene, physics) {
     return mesh;
   };
 
-  // Decorative pieces (windows, arches) merged into one mesh per colour.
+  // Decorative pieces (windows, arches) merged into one mesh per colour and surface.
   const decor = new Map();
-  const addDecor = (color, geo, emissive) => {
-    const key = `${color}|${emissive ?? ''}`;
-    if (!decor.has(key)) decor.set(key, { color, emissive, geos: [] });
+  const addDecor = (color, geo, emissive, surface = 'none') => {
+    const key = `${color}|${emissive ?? ''}|${surface}`;
+    if (!decor.has(key)) decor.set(key, { color, emissive, surface, geos: [] });
     decor.get(key).geos.push(geo);
   };
-  const decorBox = (cx, y0, cz, w, h, d, color, emissive) => {
+  const decorBox = (cx, y0, cz, w, h, d, color, emissive, surface) => {
     const g = new THREE.BoxGeometry(w, h, d);
     g.translate(cx, y0 + h / 2, cz);
-    addDecor(color, g, emissive);
+    if (surface === 'glass') {
+      // One random number per pane, so each window's glints get their own offset.
+      const id = Math.random();
+      g.setAttribute('lmId', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(id), 1));
+    }
+    addDecor(color, g, emissive, surface);
   };
 
   // ---------------------------------------------------------- ground
@@ -86,9 +91,9 @@ export function buildWorld(scene, physics) {
       const p = at(t, y0, out);
       return block(p.x, p.z, alongX ? sa : so, alongX ? so : sa, y0, sh, col, opts);
     };
-    const decorFace = (t, y0, out, sa, sh, so, col, emissive) => {
+    const decorFace = (t, y0, out, sa, sh, so, col, emissive, surface) => {
       const p = at(t, y0, out);
-      decorBox(p.x, y0, p.z, alongX ? sa : so, sh, alongX ? so : sa, col, emissive);
+      decorBox(p.x, y0, p.z, alongX ? sa : so, sh, alongX ? so : sa, col, emissive, surface);
     };
 
     // Cornice ledges.
@@ -103,7 +108,7 @@ export function buildWorld(scene, physics) {
       if (ly + 2.2 > h) continue;
       for (let i = 0; i < cols; i++) {
         const t = -span / 2 + (span / cols) * (i + 0.5);
-        decorFace(t, ly + 0.55, 0.04, 1.0, 1.5, 0.08, '#ffd88a', '#6e4a10');
+        decorFace(t, ly + 0.55, 0.04, 1.0, 1.5, 0.08, '#ffd88a', '#6e4a10', 'glass');
       }
     }
     // Shopfronts and striped awnings (climb up into them to pull onto the top).
@@ -146,7 +151,7 @@ export function buildWorld(scene, physics) {
     }
     // Upper-floor windows.
     for (let x = -13; x <= 13; x += 2.6) {
-      for (const s of [-1, 1]) decorBox(x, 3.7, s * 8.04, 1.1, 1.5, 0.08, '#ffd88a', '#6e4a10');
+      for (const s of [-1, 1]) decorBox(x, 3.7, s * 8.04, 1.1, 1.5, 0.08, '#ffd88a', '#6e4a10', 'glass');
     }
     // Glass roof, stepped up to the ridge.
     block(0, 0, 26, 10, 6, 2.4, '#a6d5df');
@@ -281,8 +286,8 @@ export function buildWorld(scene, physics) {
   };
 
   // ---------------------------------------------------------- merge decor
-  for (const { color, emissive, geos } of decor.values()) {
-    const mesh = new THREE.Mesh(mergeGeometries(geos), worldMat(color, { emissive: emissive ?? 0x000000 }));
+  for (const { color, emissive, surface, geos } of decor.values()) {
+    const mesh = new THREE.Mesh(mergeGeometries(geos), worldMat(color, { emissive: emissive ?? 0x000000, surface }));
     mesh.receiveShadow = true;
     scene.add(mesh);
   }
