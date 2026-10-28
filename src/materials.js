@@ -285,3 +285,15 @@ export function haloTexture() {
   }
   return haloTex;
 }
+
+/**
+ * Additive glow sprite that ignores the depth buffer, so the floor or wall it sits
+ * next to can never slice it. Hiding it behind things is done with a ray test
+ * instead (Game.updateHalos).
+ */
+export function haloMaterial(opts = {}) {
+  return new THREE.SpriteMaterial({
+    map: haloTexture(), transparent: true, depthWrite: false, depthTest: false,
+    blending: THREE.AdditiveBlending, ...opts,
+  });
+}

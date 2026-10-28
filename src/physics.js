@@ -71,11 +71,11 @@ export class Physics {
     return null;
   }
 
-  /** Distance along dir (unit) to the first camera-blocking box, or maxDist. */
-  raycast(o, dir, maxDist) {
+  /** Distance along dir (unit) to the first camera-blocking box (or any box, with `all`), or maxDist. */
+  raycast(o, dir, maxDist, all = false) {
     let best = maxDist;
     for (const c of this.colliders) {
-      if (!c.enabled || !c.blocksCamera) continue;
+      if (!c.enabled || (!all && !c.blocksCamera)) continue;
       let tmin = 0;
       let tmax = best;
       let hit = true;

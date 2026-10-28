@@ -158,6 +158,7 @@ function frame(now) {
 
   placeSun();
   sky.update(dt, camera, scene.fog.color, game.allWoken);
+  game.updateHalos(dt, camera.position);
   renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);

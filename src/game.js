@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { wakeUniforms, toonMat, haloTexture } from './materials.js';
+import { wakeUniforms, toonMat, haloTexture, haloMaterial } from './materials.js';
 import { DISTRICT_BOUNDS } from './world.js';
 import { BIG_FALL } from './wanderer.js';
 import { Particles } from './particles.js';
@@ -8,6 +8,8 @@ import { Particles } from './particles.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const damp = (dt, tau) => 1 - Math.exp(-dt / tau);
+const _haloP = new THREE.Vector3();
+const _haloDir = new THREE.Vector3();
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
 export const DISTRICTS = [
@@ -65,9 +67,7 @@ class Lantern {
     this.core = new THREE.Mesh(new THREE.SphereGeometry(0.28, 18, 12), this.coreMat);
     this.core.position.y = 0.85;
     g.add(this.core);
-    this.halo = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: haloTexture(), color: this.hue, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending,
-    }));
+    this.halo = new THREE.Sprite(haloMaterial({ color: this.hue, opacity: 0 }));
     this.halo.position.y = 0.85;
     this.halo.scale.setScalar(3);
     g.add(this.halo);
@@ -87,9 +87,7 @@ class Lantern {
       const mat = new THREE.MeshBasicMaterial({ color: SOCKET_EMPTY.clone(), toneMapped: false });
       const bead = new THREE.Mesh(beadGeo, mat);
       bead.position.set(Math.cos(a) * 0.75, 0, Math.sin(a) * 0.75);
-      const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: haloTexture(), color: this.hue, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending,
-      }));
+      const halo = new THREE.Sprite(haloMaterial({ color: this.hue, opacity: 0 }));
       halo.scale.setScalar(0.8);
       bead.add(halo);
       this.ring.add(bead);
@@ -147,9 +145,7 @@ class Fragment {
     this.to = new THREE.Vector3();
     this.mat = new THREE.MeshBasicMaterial({ color: FRAG_SLEEP.clone(), toneMapped: false });
     this.mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.15), this.mat);
-    this.halo = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: haloTexture(), color: '#fff2c2', transparent: true, opacity: 0.1, depthWrite: false, blending: THREE.AdditiveBlending,
-    }));
+    this.halo = new THREE.Sprite(haloMaterial({ color: '#fff2c2', opacity: 0.1 }));
     // Hint beam: shown when you chirp at an unlit lantern, so you can spot what's left.
     this.hintWait = 0;
     this.hintT = 0;
@@ -344,6 +340,7 @@ class Burst {
 export class Game {
   constructor({ scene, physics, world, wanderer, audio, sun, hemi }) {
     this.scene = scene;
+    this.physics = physics;
     this.world = world;
     this.w = wanderer;
     this.audio = audio;
@@ -424,6 +421,36 @@ export class Game {
       onMantle: () => {},
       onGrab: () => {},
     };
+  }
+
+  /**
+   * Glow sprites skip the depth test, so floors and walls never slice them. Instead,
+   * a ray from the camera to each glow's centre checks whether something solid is in
+   * the way, and the glow fades out while it is.
+   */
+  updateHalos(dt, camPos) {
+    if (!this.halos) {
+      const sprites = [
+        ...this.fragments.map((f) => f.halo),
+        ...this.districts.flatMap((d) => [d.lantern.halo, ...d.lantern.sockets.map((s) => s.halo)]),
+      ];
+      this.halos = sprites.map((sprite) => ({ sprite, base: sprite.material.color.clone(), vis: 1 }));
+    }
+    const k = damp(dt, 0.08);
+    for (const h of this.halos) {
+      h.sprite.getWorldPosition(_haloP);
+      _haloDir.subVectors(_haloP, camPos);
+      const dist = _haloDir.length();
+      // Stop short of the centre so the lantern's own collision box doesn't count.
+      const reach = dist - 0.7;
+      let seen = 1;
+      if (reach > 0) {
+        _haloDir.divideScalar(dist);
+        if (this.physics.raycast(camPos, _haloDir, reach, true) < reach) seen = 0;
+      }
+      h.vis += (seen - h.vis) * k;
+      h.sprite.material.color.copy(h.base).multiplyScalar(h.vis);
+    }
   }
 
   /** Every fragment in the slice has been woken by a chirp (collected ones count). */
