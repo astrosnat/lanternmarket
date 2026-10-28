@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 const DIM = new THREE.Color('#5e5446');
-const BRIGHT = new THREE.Color('#b04cff');
+const BRIGHT = new THREE.Color('#f57d27');
 const _dir = new THREE.Vector3();
 const _toCam = new THREE.Vector3();
 const _side = new THREE.Vector3();
