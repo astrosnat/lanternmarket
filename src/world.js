@@ -42,7 +42,7 @@ export function buildWorld(scene, physics) {
   };
 
   // ---------------------------------------------------------- ground
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), worldMat('#b9a68c'));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), worldMat('#b9a68c', { surface: 'plaster' }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
@@ -56,7 +56,7 @@ export function buildWorld(scene, physics) {
       if (Math.abs(x) < 16 && Math.abs(z) < 9) continue; // under the market
       xs.push([x, z]);
     }
-    const inst = new THREE.InstancedMesh(tile, worldMat('#ffffff'), xs.length);
+    const inst = new THREE.InstancedMesh(tile, worldMat('#ffffff', { surface: 'plaster' }), xs.length);
     const m = new THREE.Matrix4();
     const c = new THREE.Color();
     const tones = ['#c9b79e', '#bfa98d', '#d3c3a8', '#b7a387', '#cdb18f'];
@@ -72,8 +72,8 @@ export function buildWorld(scene, physics) {
   // ---------------------------------------------------------- terrace buildings
   // face: which side looks onto the street. Ledges every 3.2 m are rest points.
   const building = ({ x, z, w, d, h, face, color, seed = 0, awnings = 2, chimneys = 2 }) => {
-    block(x, z, w, d, 0, h, color);
-    block(x, z, w + 0.6, d + 0.6, h, 0.35, TRIM); // roof cap overhang
+    block(x, z, w, d, 0, h, color, { surface: 'brick' });
+    block(x, z, w + 0.6, d + 0.6, h, 0.35, TRIM, { surface: 'plaster' }); // roof cap overhang
     const top = h + 0.35;
     const n = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }[face];
     const alongX = n[0] === 0;
@@ -94,7 +94,7 @@ export function buildWorld(scene, physics) {
     // Cornice ledges.
     const ledgeYs = [];
     for (let y = 3.2; y < h - 1.4; y += 3.2) {
-      onFace(0, y - 0.25, 0.35, span - 1.2, 0.25, 0.7, TRIM);
+      onFace(0, y - 0.25, 0.35, span - 1.2, 0.25, 0.7, TRIM, { surface: 'plaster' });
       ledgeYs.push(y);
     }
     // Glowing window tiles between ledges.
@@ -123,19 +123,20 @@ export function buildWorld(scene, physics) {
       const t = (i === 0 ? -0.3 : 0.25) * span;
       const back = alongX ? d : w;
       const p = at(t, top, -back * (0.35 + 0.1 * i));
-      block(p.x, p.z, 1.1, 1.1, top, 1.5 + (seed % 3) * 0.4, '#8b5c4a');
+      block(p.x, p.z, 1.1, 1.1, top, 1.5 + (seed % 3) * 0.4, '#8b5c4a', { surface: 'brick' });
     }
     return { top, at };
   };
 
   // ---------------------------------------------------------- 0: Piazza & Market Building
   const market = () => {
-    block(0, 0, 30, 16, 0, 6, '#dcc5a2');
+    block(0, 0, 30, 16, 0, 6, '#dcc5a2', { surface: 'stone' });
     // Cornice ring at 3.2 m.
-    block(0, -8.35, 30, 0.7, 2.95, 0.25, TRIM);
-    block(0, 8.35, 30, 0.7, 2.95, 0.25, TRIM);
-    block(15.35, 0, 0.7, 17.4, 2.95, 0.25, TRIM);
-    block(-15.35, 0, 0.7, 17.4, 2.95, 0.25, TRIM);
+    const ring = { surface: 'plaster' };
+    block(0, -8.35, 30, 0.7, 2.95, 0.25, TRIM, ring);
+    block(0, 8.35, 30, 0.7, 2.95, 0.25, TRIM, ring);
+    block(15.35, 0, 0.7, 17.4, 2.95, 0.25, TRIM, ring);
+    block(-15.35, 0, 0.7, 17.4, 2.95, 0.25, TRIM, ring);
     // Arcade arches.
     for (let x = -12; x <= 12; x += 3) {
       for (const s of [-1, 1]) decorBox(x, 0, s * 8.03, 2.0, 2.6, 0.08, '#6b4b35');
@@ -161,7 +162,7 @@ export function buildWorld(scene, physics) {
     building({ x: 8, z: -36, w: 14, d: 12, h: 10, face: 's', color: '#b5715a', seed: 2 }),
     building({ x: 23, z: -36, w: 14, d: 12, h: 13, face: 's', color: '#e0c9a0', seed: 3 }),
   ];
-  block(31, -36, 2.2, 12, 0, 12, '#a98a7a');
+  block(31, -36, 2.2, 12, 0, 12, '#a98a7a', { surface: 'brick' });
   // East terrace (towards the Opera House).
   const E = [
     building({ x: 38, z: -22, w: 12, d: 14, h: 12, face: 'w', color: '#cfa77d', seed: 4 }),
@@ -169,7 +170,7 @@ export function buildWorld(scene, physics) {
     building({ x: 38, z: 8, w: 12, d: 14, h: 11, face: 'w', color: '#d9b88f', seed: 2 }),
     building({ x: 38, z: 23, w: 12, d: 14, h: 13, face: 'w', color: '#c27d62', seed: 1 }),
   ];
-  block(31, 36, 2.2, 12, 0, 11, '#a98a7a');
+  block(31, 36, 2.2, 12, 0, 11, '#a98a7a', { surface: 'brick' });
   // South terrace.
   const S = [
     building({ x: -22, z: 36, w: 14, d: 12, h: 10, face: 'n', color: '#d4a373', seed: 3 }),
@@ -209,19 +210,20 @@ export function buildWorld(scene, physics) {
   }
 
   // ---------------------------------------------------------- 1: St Paul's Church
-  block(-48, 0, 26, 18, 0, 12, '#e6dccb'); // nave, x -61..-35
-  block(-48, 0, 24, 8, 12, 2, '#9a8f86'); // roof ridge, top 14
-  block(-54, 0, 3, 3, 14, 3.5, '#efe6d6'); // bell turret, top 17.5
+  const stone = { surface: 'stone' };
+  block(-48, 0, 26, 18, 0, 12, '#e6dccb', stone); // nave, x -61..-35
+  block(-48, 0, 24, 8, 12, 2, '#9a8f86', { surface: 'plaster' }); // roof ridge, top 14
+  block(-54, 0, 3, 3, 14, 3.5, '#efe6d6', stone); // bell turret, top 17.5
   // Tuscan portico facing the Piazza.
   for (const z of [-6.5, -2.2, 2.2, 6.5]) {
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 9.5, 18), worldMat('#f1e9da'));
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 9.5, 18), worldMat('#f1e9da', stone));
     col.position.set(-31.5, 4.75, z);
     col.castShadow = col.receiveShadow = true;
     scene.add(col);
     physics.addBox(-31.5, 0, z, 1.1, 9.5, 1.1, { camera: false });
   }
-  block(-32.9, 0, 4.2, 17, 9.5, 0.9, '#e9dfcf'); // portico roof, top 10.4
-  block(-33.2, 0, 3.6, 12, 10.4, 1.2, '#ddd2c0'); // pediment, top 11.6
+  block(-32.9, 0, 4.2, 17, 9.5, 0.9, '#e9dfcf', stone); // portico roof, top 10.4
+  block(-33.2, 0, 3.6, 12, 10.4, 1.2, '#ddd2c0', stone); // pediment, top 11.6
   for (let z = -6; z <= 6; z += 3) decorBox(-35.06, 2, z, 0.08, 4.5, 1.6, '#5d5560');
   // Churchyard terraces.
   const SP = [
