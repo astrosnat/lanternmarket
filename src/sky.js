@@ -39,7 +39,8 @@ void main() {
   // Grey asleep; full (slightly boosted) colour once everything is woken.
   sky = max(mix(vec3(grey), sky, uColour * 1.5), 0.0);
 
-  float t = smoothstep(0.03, 0.55, d.y) * uLoaded;
+  // Full stars down to ~9° above the horizon; only the last band blends into the fog.
+  float t = smoothstep(0.0, 0.15, d.y) * uLoaded;
   gl_FragColor = vec4(mix(uFog, sky * 1.4, t), 1.0);
   #include <colorspace_fragment>
 }
