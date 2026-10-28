@@ -90,7 +90,6 @@ export class Wanderer {
     this.hemV = new THREE.Vector2();
     this.prevLocalV = new THREE.Vector2();
     this.walkPhase = 0;
-    this.climbPhase = 0;
     this.climbVy = 0;
     this.chirpCharge = 0;
     this.hicT = 0;
@@ -178,24 +177,13 @@ export class Wanderer {
     tip.rotation.x = -0.75;
     hood.add(tip);
 
-    const armGeo = new THREE.CapsuleGeometry(0.035, 0.13, 4, 8);
-    armGeo.translate(0, -0.09, 0);
-    const arms = [-1, 1].map((s) => {
-      const pivot = new THREE.Group();
-      pivot.position.set(s * 0.15, 0.5, 0.03);
-      pivot.add(new THREE.Mesh(armGeo, robe));
-      pivot.visible = false;
-      body.add(pivot);
-      return pivot;
-    });
-
     const neck = new THREE.Object3D();
     neck.position.set(0, 0.56, -0.16);
     body.add(neck);
 
     root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     scene.add(root);
-    this.model = { root, tumble, body, robePivot, hoodPivot, arms, neck, eyes };
+    this.model = { root, tumble, body, robePivot, hoodPivot, neck, eyes };
   }
 
   // ---------------------------------------------------------------- physics
@@ -462,7 +450,6 @@ export class Wanderer {
       vy = up * CLIMB_V;
       vl = side * CLIMB_V * 0.7;
       this.scarf = Math.max(0, this.scarf - dt * (SCARF_CLIMB_IDLE + SCARF_CLIMB_MOVE * im));
-      this.climbPhase += dt * im * 8;
     } else {
       vy = -SLIDE_V; // out of scarf: slide down gently, never fall
       vl = 0;
@@ -596,18 +583,6 @@ export class Wanderer {
     if (this.hicT > 0) bob += Math.sin((this.hicT / 0.35) * Math.PI) * 0.12;
     m.body.position.y = -0.3 + bob;
 
-    // Arms only show while climbing or gliding.
-    m.arms[0].visible = m.arms[1].visible = climbing || this.gliding;
-    if (climbing) {
-      const a = Math.sin(this.climbPhase);
-      m.arms[0].rotation.set(-2.6 + a * 0.4, 0, 0.2);
-      m.arms[1].rotation.set(-2.6 - a * 0.4, 0, -0.2);
-    } else if (this.gliding) {
-      const f = Math.sin(time * 10) * 0.08;
-      m.arms[0].rotation.set(0, 0, -1.35 + f);
-      m.arms[1].rotation.set(0, 0, 1.35 - f);
-    }
-
     // Body tilt: lean into the climb, tip forward in a glide, tumble when tripping.
     let tiltX = 0;
     let tiltZ = 0;
@@ -633,11 +608,6 @@ export class Wanderer {
     let hoodTarget = this.hoodT > 0.35 || (tripping && this.tripT > 0.4 && this.tripT < 1.0) ? 1 : 0;
     this.hood += (hoodTarget - this.hood) * damp(dt, hoodTarget ? 0.05 : 0.12);
     m.hoodPivot.rotation.x = -0.6 + this.hood * 0.85 - this.chirpCharge * 0.35;
-    if (this.hoodT > 0 && this.hoodT < 0.45) {
-      // a quick paw at the hood
-      m.arms[1].visible = true;
-      m.arms[1].rotation.set(-2.4, 0, -0.5);
-    }
 
     // Blink every few seconds; squeeze shut while charging a big chirp.
     this.blinkT -= dt;
