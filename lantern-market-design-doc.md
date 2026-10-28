@@ -16,7 +16,7 @@ The feel: Journey's wordless pilgrimage, Abzu's colour bursts, played on real Lo
 
 A knee-high robed figure, roughly pigeon-sized next to the buildings. The scale gap is the joke and the wonder.
 
-- **Silhouette:** cone-shaped robe, oversized hood that slips over its eyes, two dot eyes, stubby legs, no visible arms until it climbs.
+- **Silhouette:** cone-shaped robe, oversized hood that slips over its eyes, two dot eyes.
 - **Scarf:** a long ribbon that trails behind and glows. It shows stamina and charge, so the HUD stays empty.
 - **Voice:** one chirp sound, pitched by how long you hold the button. Short peep to long warble.
 
