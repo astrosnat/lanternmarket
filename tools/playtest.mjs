@@ -316,6 +316,7 @@ const ROUTE = [
   expect('Piazza lantern lit', lit(0)),
   wait(6),
   expect("fog wall to St Paul's has dissolved", () => !world.fogWalls.stpauls.collider.enabled),
+  expect('fog wall to the Opera House has dissolved too', () => !world.fogWalls.opera.collider.enabled),
 
   section("St Paul's: up the portico"),
   go(-10, 0, 9.8),
@@ -356,8 +357,6 @@ const ROUTE = [
   chirp(0.3),
   wait(3),
   expect("St Paul's lantern lit", lit(1)),
-  wait(6),
-  expect('fog wall to the Opera House has dissolved', () => !world.fogWalls.opera.collider.enabled),
 
   section('Opera House: back through the Piazza and the north-east alley'),
   go(-45, -12),

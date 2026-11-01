@@ -77,44 +77,57 @@ export function buildWorld(scene, physics) {
 
   // ---------------------------------------------------------- terrace buildings
   // face: which side looks onto the street. Ledges every 3.2 m are rest points.
+  // back: optionally dress the rear too (plainer: windows, ledges, pipe, back door),
+  //       for buildings whose backs are on show.
   // base: build on top of something (e.g. a fly tower on a roof).
   const building = ({
-    x, z, w, d, h, face, color, seed = 0, awnings = 2, chimneys = 2, base = 0, surface = 'brick', sign = true,
+    x, z, w, d, h, face, back, color, seed = 0, awnings = 2, chimneys = 2, base = 0, surface = 'brick', sign = true,
   }) => {
     block(x, z, w, d, base, h, color, { surface });
     block(x, z, w + 0.6, d + 0.6, base + h, 0.35, TRIM, { surface: 'plaster' }); // roof cap overhang
     const top = base + h + 0.35;
-    const n = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }[face];
-    const alongX = n[0] === 0;
-    const span = alongX ? w : d;
-    const faceC = alongX ? z + (n[1] * d) / 2 : x + (n[0] * w) / 2;
-    const tangC = alongX ? x : z;
-    // World point on the façade: t along it, height y, out = distance from the face.
-    const at = (t, y, out) => (alongX ? V(tangC + t, y, faceC + n[1] * out) : V(faceC + n[0] * out, y, tangC + t));
-    const onFace = (t, y0, out, sa, sh, so, col, opts) => {
-      const p = at(t, y0, out);
-      return block(p.x, p.z, alongX ? sa : so, alongX ? so : sa, y0, sh, col, opts);
+
+    // Helpers for one side of the building.
+    const side = (f) => {
+      const n = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }[f];
+      const alongX = n[0] === 0;
+      const span = alongX ? w : d;
+      const faceC = alongX ? z + (n[1] * d) / 2 : x + (n[0] * w) / 2;
+      const tangC = alongX ? x : z;
+      // World point on the façade: t along it, height y, out = distance from the face.
+      const at = (t, y, out) => (alongX ? V(tangC + t, y, faceC + n[1] * out) : V(faceC + n[0] * out, y, tangC + t));
+      const onFace = (t, y0, out, sa, sh, so, col, opts) => {
+        const p = at(t, y0, out);
+        return block(p.x, p.z, alongX ? sa : so, alongX ? so : sa, y0, sh, col, opts);
+      };
+      const decorFace = (t, y0, out, sa, sh, so, col, emissive, surf) => {
+        const p = at(t, y0, out);
+        decorBox(p.x, y0, p.z, alongX ? sa : so, sh, alongX ? so : sa, col, emissive, surf);
+      };
+      return { span, alongX, at, onFace, decorFace };
     };
-    const decorFace = (t, y0, out, sa, sh, so, col, emissive, surface) => {
-      const p = at(t, y0, out);
-      decorBox(p.x, y0, p.z, alongX ? sa : so, sh, alongX ? so : sa, col, emissive, surface);
+    // Cornice ledges with glowing window tiles between them, and a drainpipe.
+    const storeys = ({ span, onFace, decorFace }, pipeAt) => {
+      const ledgeYs = [];
+      for (let y = base + 3.2; y < base + h - 1.4; y += 3.2) {
+        onFace(0, y - 0.25, 0.35, span - 1.2, 0.25, 0.7, TRIM, { surface: 'plaster' });
+        ledgeYs.push(y);
+      }
+      const cols = Math.max(2, Math.floor(span / 2.6));
+      for (const ly of ledgeYs) {
+        if (ly + 2.2 > base + h) continue;
+        for (let i = 0; i < cols; i++) {
+          const t = -span / 2 + (span / cols) * (i + 0.5);
+          decorFace(t, ly + 0.55, 0.04, 1.0, 1.5, 0.08, '#ffd88a', '#6e4a10', 'glass');
+        }
+      }
+      // Drainpipe (visual; the whole wall is climbable anyway).
+      decorFace(pipeAt * span, base, 0.1, 0.16, h, 0.16, '#555b66');
     };
 
-    // Cornice ledges.
-    const ledgeYs = [];
-    for (let y = base + 3.2; y < base + h - 1.4; y += 3.2) {
-      onFace(0, y - 0.25, 0.35, span - 1.2, 0.25, 0.7, TRIM, { surface: 'plaster' });
-      ledgeYs.push(y);
-    }
-    // Glowing window tiles between ledges.
-    const cols = Math.max(2, Math.floor(span / 2.6));
-    for (const ly of ledgeYs) {
-      if (ly + 2.2 > base + h) continue;
-      for (let i = 0; i < cols; i++) {
-        const t = -span / 2 + (span / cols) * (i + 0.5);
-        decorFace(t, ly + 0.55, 0.04, 1.0, 1.5, 0.08, '#ffd88a', '#6e4a10', 'glass');
-      }
-    }
+    const front = side(face);
+    const { span, alongX, at, onFace, decorFace } = front;
+    storeys(front, -0.5 + 0.5 / span);
     // Shopfronts and striped awnings (climb up into them to pull onto the top).
     for (let i = 0; i < awnings; i++) {
       const t = awnings === 1 ? 0 : -span / 4 + (span / 2) * i;
@@ -127,13 +140,22 @@ export function buildWorld(scene, physics) {
       const sp = at(span / 2 - 1.2, base + 4.2, 0.55);
       block(sp.x, sp.z, alongX ? 0.12 : 0.9, alongX ? 0.9 : 0.12, base + 4.3, 0.8, AWNINGS[(seed + 3) % AWNINGS.length]);
     }
-    // Drainpipe (visual; the whole wall is climbable anyway).
-    decorFace(-span / 2 + 0.5, base, 0.1, 0.16, h, 0.16, '#555b66');
+
+    if (back) {
+      const rear = side(back);
+      storeys(rear, 0.5 - 0.5 / rear.span);
+      // A plain back door with a little step and lamp over it.
+      const dt = ((seed % 3) - 1) * rear.span * 0.25;
+      rear.decorFace(dt, base, 0.03, 1.1, 2.1, 0.06, '#3d2f27');
+      rear.onFace(dt, base, 0.35, 1.5, 0.2, 0.7, TRIM, { surface: 'plaster' });
+      rear.decorFace(dt, base + 2.35, 0.12, 0.3, 0.3, 0.24, '#ffe2a0', '#7a5a1a');
+    }
+
     // Chimneys.
     for (let i = 0; i < chimneys; i++) {
       const t = (i === 0 ? -0.3 : 0.25) * span;
-      const back = alongX ? d : w;
-      const p = at(t, top, -back * (0.35 + 0.1 * i));
+      const depth = alongX ? d : w;
+      const p = at(t, top, -depth * (0.35 + 0.1 * i));
       block(p.x, p.z, 1.1, 1.1, top, 1.5 + (seed % 3) * 0.4, '#8b5c4a', { surface: 'brick' });
     }
     return { top, at };
@@ -176,10 +198,10 @@ export function buildWorld(scene, physics) {
   block(31, -36, 2.2, 12, 0, 12, '#a98a7a', { surface: 'brick' });
   // East terrace (towards the Opera House).
   const E = [
-    building({ x: 38, z: -22, w: 12, d: 14, h: 12, face: 'w', color: '#cfa77d', seed: 4 }),
-    building({ x: 38, z: -7, w: 12, d: 14, h: 15, face: 'w', color: '#b98a6a', seed: 0, awnings: 1 }),
-    building({ x: 38, z: 8, w: 12, d: 14, h: 11, face: 'w', color: '#d9b88f', seed: 2 }),
-    building({ x: 38, z: 23, w: 12, d: 14, h: 13, face: 'w', color: '#c27d62', seed: 1 }),
+    building({ x: 38, z: -22, w: 12, d: 14, h: 12, face: 'w', back: 'e', color: '#cfa77d', seed: 4 }),
+    building({ x: 38, z: -7, w: 12, d: 14, h: 15, face: 'w', back: 'e', color: '#b98a6a', seed: 0, awnings: 1 }),
+    building({ x: 38, z: 8, w: 12, d: 14, h: 11, face: 'w', back: 'e', color: '#d9b88f', seed: 2 }),
+    building({ x: 38, z: 23, w: 12, d: 14, h: 13, face: 'w', back: 'e', color: '#c27d62', seed: 1 }),
   ];
   block(31, 36, 2.2, 12, 0, 11, '#a98a7a', { surface: 'brick' });
   // South terrace.

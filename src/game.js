@@ -14,16 +14,16 @@ const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
 export const DISTRICTS = [
   {
-    name: 'The Piazza & Market Building', hue: '#ffb347', fog: '#f1d1a3', maxRadius: 64, unlocks: 'stpauls',
+    name: 'The Piazza & Market Building', hue: '#ffb347', fog: '#f1d1a3', maxRadius: 64, unlocks: ['stpauls', 'opera'],
     petals: ['#ff9fb2', '#ffc56b', '#ffe1e6', '#ff8a5c'],
   },
   {
-    name: "St Paul's Church", hue: '#b9a3e3', fog: '#dcd3ea', maxRadius: 46, unlocks: 'opera',
+    name: "St Paul's Church", hue: '#b9a3e3', fog: '#dcd3ea', maxRadius: 46, unlocks: [],
     petals: ['#c7b3ef', '#a9c9a0', '#f3eefc'],
   },
   {
     // Crimson & rose gold. Opens the way to Neal's Yard once that district exists.
-    name: 'Royal Opera House', hue: '#e0405f', fog: '#efd4d0', maxRadius: 90, unlocks: null,
+    name: 'Royal Opera House', hue: '#e0405f', fog: '#efd4d0', maxRadius: 90, unlocks: [],
     petals: ['#c8243f', '#e8a598', '#f2c4b6', '#b76e79'],
   },
 ];
@@ -552,16 +552,17 @@ export class Game {
       wakeUniforms.uWakeHue.value[d.id].copy(d.hueColor).multiplyScalar(edge);
     }
 
-    // Fog walls thin as fragments return, then dissolve.
+    // Fog walls thin as fragments return, then dissolve. A district can open several.
     for (const d of this.districts) {
-      if (!d.unlocks) continue;
-      const wall = this.world.fogWalls[d.unlocks];
-      const target = d.lit ? 0 : wall.baseOpacity * (1 - 0.5 * (d.fill / d.needed));
-      const m = wall.mesh.material;
-      m.opacity += (target - m.opacity) * damp(dt, d.lit ? 1.2 : 0.8);
-      if (d.lit && m.opacity < 0.02) {
-        wall.mesh.visible = false;
-        wall.collider.enabled = false;
+      for (const name of d.unlocks) {
+        const wall = this.world.fogWalls[name];
+        const target = d.lit ? 0 : wall.baseOpacity * (1 - 0.5 * (d.fill / d.needed));
+        const m = wall.mesh.material;
+        m.opacity += (target - m.opacity) * damp(dt, d.lit ? 1.2 : 0.8);
+        if (d.lit && m.opacity < 0.02) {
+          wall.mesh.visible = false;
+          wall.collider.enabled = false;
+        }
       }
     }
     for (const wall of Object.values(this.world.fogWalls)) {
