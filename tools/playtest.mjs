@@ -38,7 +38,7 @@ if (process.argv.includes('--all')) {
       `${(r.stats.glideTime.toFixed(0) + 's').padEnd(6)} ${String(r.stats.slides).padEnd(6)} ${r.blocked}`,
     );
   }
-  process.exit(rows.every((r) => r.lit === '2/2' && r.blocked === 0) ? 0 : 1);
+  process.exit(rows.every((r) => r.lit.split('/')[0] === r.lit.split('/')[1] && r.blocked === 0) ? 0 : 1);
 }
 
 // Minimal DOM so materials.js can paint its halo texture.
@@ -122,6 +122,10 @@ game.onDeposited = (f) => {
   log('deposit', `${d.name}: ${d.fill}/${d.needed}`);
   if (d.lit) log('LIT', `${d.name} wakes up`);
 };
+const onPickup = game.fragCtx.onPickup;
+game.fragCtx.onPickup = (f) => { log('pickup', `fragment at ${fmt(f.home)} (district ${f.district})`); onPickup(f); };
+const onWake = game.fragCtx.onWake;
+game.fragCtx.onWake = (f) => { log('wake', `fragment at ${fmt(f.home)} (district ${f.district})`); onWake(f); };
 const origHiccup = w.hiccup.bind(w);
 w.hiccup = () => { stats.hiccups++; log('hiccup', ''); origHiccup(); };
 
@@ -216,6 +220,8 @@ function runGo(leg) {
 
 function runChirp(leg) {
   stats.chirps++;
+  // A tripping wanderer can't chirp; wait until it's back on its feet, as a player would.
+  while (w.state === 'trip') frame(ZERO);
   const before = game.fragments.filter((f) => f.state === 'sleep').length;
   const frames = Math.max(1, Math.round(leg.hold / DT));
   for (let i = 0; i < frames; i++) frame(ZERO, { chirp: true });
@@ -350,6 +356,66 @@ const ROUTE = [
   chirp(0.3),
   wait(3),
   expect("St Paul's lantern lit", lit(1)),
+  wait(6),
+  expect('fog wall to the Opera House has dissolved', () => !world.fogWalls.opera.collider.enabled),
+
+  section('Opera House: back through the Piazza and the north-east alley'),
+  go(-45, -12),
+  go(-26, -12),
+  go(28, -27),
+  go(31, -29.5),
+  go(46, -29.5),
+  go(50, -14),
+
+  section('Opera House: up the Floral Hall and over onto the Opera House roof'),
+  go(66, -14),
+  go(66, -26, 9),
+  go(63, -26, 14.6),
+  go(83, -26, 18.35),
+  // Round the fly tower (not over it) to the roof strip beside Bow Street:
+  // one chirp there reaches both the fly-tower top and the portico.
+  go(83, -41),
+  go(97.5, -41),
+  go(97.5, -28),
+  chirp(),
+
+  section('Opera House: the fly tower'),
+  go(90, -28, 30.7),
+  wait(0.5),
+  expect('picked up the fly-tower fragment', carrying(1)),
+
+  section('Opera House: the Bow Street portico'),
+  go(101.6, -26, 14.3),
+  wait(0.5),
+  expect('carrying fly-tower + portico fragments', carrying(2)),
+
+  section('Opera House: Bow Street roof'),
+  go(105, -10),
+  go(105, 12),
+  go(112, 12, 6.4),
+  chirp(),
+  go(112, 12, 13.35),
+  wait(0.5),
+  expect('carrying three Opera House fragments', carrying(3)),
+
+  section('Opera House: Russell Street roof'),
+  go(104, 24),
+  go(77, 25),
+  go(77, 36, 6.4),
+  chirp(),
+  go(77, 36, 13.35),
+  wait(0.5),
+  expect('carrying all four Opera House fragments', carrying(4)),
+
+  section('Opera House: the lantern on the Floral Hall crown'),
+  go(77, 24),
+  go(66, -14),
+  go(66, -26, 9),
+  go(63, -26, 14.6),
+  go(64.6, -26),
+  chirp(0.3),
+  wait(3),
+  expect('Opera House lantern lit', lit(2)),
 ];
 
 const wall0 = Date.now();

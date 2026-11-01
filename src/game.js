@@ -18,8 +18,13 @@ export const DISTRICTS = [
     petals: ['#ff9fb2', '#ffc56b', '#ffe1e6', '#ff8a5c'],
   },
   {
-    name: "St Paul's Church", hue: '#b9a3e3', fog: '#dcd3ea', maxRadius: 46, unlocks: null,
+    name: "St Paul's Church", hue: '#b9a3e3', fog: '#dcd3ea', maxRadius: 46, unlocks: 'opera',
     petals: ['#c7b3ef', '#a9c9a0', '#f3eefc'],
+  },
+  {
+    // Crimson & rose gold. Opens the way to Neal's Yard once that district exists.
+    name: 'Royal Opera House', hue: '#e0405f', fog: '#efd4d0', maxRadius: 90, unlocks: null,
+    petals: ['#c8243f', '#e8a598', '#f2c4b6', '#b76e79'],
   },
 ];
 

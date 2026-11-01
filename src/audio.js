@@ -324,6 +324,59 @@ export class AudioSys {
       if (s === 3) this.bell(tones[(bar + 1) % 3], t, 0.025, 2.2, church);
       if (s === 6 && bar % 4 === 3) this.bell(chord[0] + 12, t, 0.05, 3.5, church);
     }
+
+    // Layer 2 — Royal Opera House: a string section swelling under the chords,
+    // with a solo violin singing long notes above.
+    const opera = this.layers.get(2);
+    if (opera) {
+      if (bar % 2 === 0 && s === 0) {
+        const dur = STEP * BAR * 2;
+        this.bowed(chord[0] - 12, t, dur, 0.03, opera); // cello
+        this.bowed(chord[1], t, dur, 0.022, opera); // viola
+        this.bowed(chord[2] + 12, t, dur, 0.018, opera); // violins
+      }
+      if (s === 0 || s === 4) {
+        // Each phrase picks its own path through the chord tones.
+        const k = (bar * 2 + s / 4 + Math.floor(bar / 4)) % 3;
+        this.bowed(chord[k] + 24, t, STEP * 4 * 0.95, 0.022, opera, true);
+      }
+    }
+  }
+
+  /** Bowed string: detuned saws through a soft filter, slow swell, delayed vibrato. */
+  bowed(m, t, dur, gain, dest, solo = false) {
+    const ctx = this.ctx;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = solo ? 2400 : 1500;
+    f.Q.value = 0.9;
+    const g = ctx.createGain();
+    const attack = solo ? 0.25 : Math.min(1.2, dur * 0.3);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + attack);
+    g.gain.setValueAtTime(gain, t + Math.max(attack, dur - 0.4));
+    g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.3);
+    f.connect(g).connect(dest);
+    const end = t + dur + 0.4;
+    // Vibrato that eases in after the note starts, like a real player.
+    const vib = ctx.createOscillator();
+    vib.frequency.value = solo ? 5.6 : 4.8;
+    const vg = ctx.createGain();
+    vg.gain.setValueAtTime(0, t);
+    vg.gain.linearRampToValueAtTime(solo ? 9 : 5, t + attack + 0.3);
+    vib.connect(vg);
+    for (const det of solo ? [0, 4] : [-8, 0, 8]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = mtof(m);
+      o.detune.value = det;
+      vg.connect(o.detune);
+      o.connect(f);
+      o.start(t);
+      o.stop(end);
+    }
+    vib.start(t);
+    vib.stop(end);
   }
 
   /** Accordion reed: detuned saw + square through a soft filter, with bellows tremolo. */

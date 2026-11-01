@@ -13,6 +13,7 @@ const TRIM = '#efe3cf';
 export const DISTRICT_BOUNDS = [
   [-27, -45, 48, 45], // 0 Piazza & Market Building
   [-75, -45, -27, 45], // 1 St Paul's Church
+  [48, -45, 118, 45], // 2 Royal Opera House
 ];
 
 export function buildWorld(scene, physics) {
@@ -76,10 +77,13 @@ export function buildWorld(scene, physics) {
 
   // ---------------------------------------------------------- terrace buildings
   // face: which side looks onto the street. Ledges every 3.2 m are rest points.
-  const building = ({ x, z, w, d, h, face, color, seed = 0, awnings = 2, chimneys = 2 }) => {
-    block(x, z, w, d, 0, h, color, { surface: 'brick' });
-    block(x, z, w + 0.6, d + 0.6, h, 0.35, TRIM, { surface: 'plaster' }); // roof cap overhang
-    const top = h + 0.35;
+  // base: build on top of something (e.g. a fly tower on a roof).
+  const building = ({
+    x, z, w, d, h, face, color, seed = 0, awnings = 2, chimneys = 2, base = 0, surface = 'brick', sign = true,
+  }) => {
+    block(x, z, w, d, base, h, color, { surface });
+    block(x, z, w + 0.6, d + 0.6, base + h, 0.35, TRIM, { surface: 'plaster' }); // roof cap overhang
+    const top = base + h + 0.35;
     const n = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }[face];
     const alongX = n[0] === 0;
     const span = alongX ? w : d;
@@ -98,14 +102,14 @@ export function buildWorld(scene, physics) {
 
     // Cornice ledges.
     const ledgeYs = [];
-    for (let y = 3.2; y < h - 1.4; y += 3.2) {
+    for (let y = base + 3.2; y < base + h - 1.4; y += 3.2) {
       onFace(0, y - 0.25, 0.35, span - 1.2, 0.25, 0.7, TRIM, { surface: 'plaster' });
       ledgeYs.push(y);
     }
     // Glowing window tiles between ledges.
     const cols = Math.max(2, Math.floor(span / 2.6));
     for (const ly of ledgeYs) {
-      if (ly + 2.2 > h) continue;
+      if (ly + 2.2 > base + h) continue;
       for (let i = 0; i < cols; i++) {
         const t = -span / 2 + (span / cols) * (i + 0.5);
         decorFace(t, ly + 0.55, 0.04, 1.0, 1.5, 0.08, '#ffd88a', '#6e4a10', 'glass');
@@ -115,14 +119,16 @@ export function buildWorld(scene, physics) {
     for (let i = 0; i < awnings; i++) {
       const t = awnings === 1 ? 0 : -span / 4 + (span / 2) * i;
       const col = AWNINGS[(seed + i) % AWNINGS.length];
-      decorFace(t, 0, 0.03, 3.2, 2.4, 0.06, '#4d3a2e');
-      onFace(t, 2.35, 0.8, 3.4, 0.18, 1.6, col);
+      decorFace(t, base, 0.03, 3.2, 2.4, 0.06, '#4d3a2e');
+      onFace(t, base + 2.35, 0.8, 3.4, 0.18, 1.6, col);
     }
     // Hanging sign.
-    const sp = at(span / 2 - 1.2, 4.2, 0.55);
-    block(sp.x, sp.z, alongX ? 0.12 : 0.9, alongX ? 0.9 : 0.12, 4.3, 0.8, AWNINGS[(seed + 3) % AWNINGS.length]);
+    if (sign) {
+      const sp = at(span / 2 - 1.2, base + 4.2, 0.55);
+      block(sp.x, sp.z, alongX ? 0.12 : 0.9, alongX ? 0.9 : 0.12, base + 4.3, 0.8, AWNINGS[(seed + 3) % AWNINGS.length]);
+    }
     // Drainpipe (visual; the whole wall is climbable anyway).
-    decorFace(-span / 2 + 0.5, 0, 0.1, 0.16, h, 0.16, '#555b66');
+    decorFace(-span / 2 + 0.5, base, 0.1, 0.16, h, 0.16, '#555b66');
     // Chimneys.
     for (let i = 0; i < chimneys; i++) {
       const t = (i === 0 ? -0.3 : 0.25) * span;
@@ -248,6 +254,132 @@ export function buildWorld(scene, physics) {
   [[-40, -15], [-52, -15], [-64, -12], [-40, 15], [-56, 15], [-66, 8]].forEach(([x, z]) => tree(x, z));
   [[-38, -20], [-60, 20]].forEach(([x, z]) => lamp(x, z));
 
+  // ---------------------------------------------------------- 2: Royal Opera House
+  // East of the Piazza (x 48..118). Floral Hall faces the Piazza's north-east corner;
+  // the Opera House sits behind it with its fly tower, portico on Bow Street.
+  const IRON = '#4a5560';
+  const glassId = (g, id = Math.random()) =>
+    g.setAttribute('lmId', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(id), 1));
+
+  // Tall arched window on a wall facing ±z (out = which side of the wall).
+  const archWindow = (x, z, out, y0, w, h) => {
+    const id = Math.random();
+    const rect = new THREE.BoxGeometry(w, h, 0.08);
+    rect.translate(x, y0 + h / 2, z + out);
+    glassId(rect, id);
+    addDecor('#ffd88a', rect, '#6e4a10', 'glass');
+    const top = new THREE.CylinderGeometry(w / 2, w / 2, 0.08, 16, 1, false, -Math.PI / 2, Math.PI);
+    top.rotateX(Math.PI / 2);
+    top.translate(x, y0 + h, z + out);
+    glassId(top, id);
+    addDecor('#ffd88a', top, '#6e4a10', 'glass');
+  };
+
+  // Floral Hall: arched glass-and-iron hall, x 52..80, z -34..-18.
+  {
+    block(66, -26, 28, 16, 0, 9, '#eadccb', stone);
+    // Cornice ledges at 3.2 and 6.4 m on the three open sides (rest points).
+    for (const y of [3.2, 6.4]) {
+      block(66, -34.35, 28, 0.7, y - 0.25, 0.25, TRIM, { surface: 'plaster' });
+      block(66, -17.65, 28, 0.7, y - 0.25, 0.25, TRIM, { surface: 'plaster' });
+      block(51.65, -26, 0.7, 17.4, y - 0.25, 0.25, TRIM, { surface: 'plaster' });
+    }
+    // Tall arched windows along both long sides.
+    for (let x = 54.5; x <= 78; x += 3) {
+      for (const [z, out] of [[-18, 0.04], [-34, -0.04]]) {
+        archWindow(x, z, out, 0.4, 1.5, 2.1);
+        archWindow(x, z, out, 3.55, 1.5, 1.8);
+      }
+    }
+    // Stepped glass vault on top, ribbed with iron; the lantern sits on the crown.
+    block(66, -26, 26, 12, 9, 2.2, '#a6d5df'); // top 11.2
+    block(66, -26, 24, 7.6, 11.2, 2.0, '#9fcfd9'); // top 13.2
+    block(66, -26, 22, 3, 13.2, 1.4, '#94c6d2'); // top 14.6
+    for (let x = 54; x <= 78; x += 2) {
+      decorBox(x, 9, -26, 0.1, 2.22, 12.02, IRON);
+      if (x >= 55 && x <= 77) decorBox(x, 11.2, -26, 0.1, 2.02, 7.62, IRON);
+      if (x >= 56 && x <= 76) decorBox(x, 13.2, -26, 0.1, 1.42, 3.02, IRON);
+    }
+    // The great iron fan arch on the gable facing the Piazza.
+    const fan = new THREE.TorusGeometry(6.2, 0.2, 6, 28, Math.PI);
+    fan.rotateY(Math.PI / 2);
+    fan.translate(52.95, 9, -26);
+    addDecor(IRON, fan);
+    for (let i = 1; i < 8; i++) {
+      const a = (i / 8) * Math.PI;
+      const spoke = new THREE.BoxGeometry(0.12, 6.2, 0.12);
+      spoke.translate(0, 3.1, 0);
+      spoke.rotateX(a - Math.PI / 2);
+      spoke.translate(52.95, 9, -26);
+      addDecor(IRON, spoke);
+    }
+  }
+
+  // The Opera House: stone block with a fly tower above the stage.
+  const OPERA = building({
+    x: 90, z: -26, w: 20, d: 36, h: 18, face: 'e', color: '#efe6da', seed: 2,
+    awnings: 0, chimneys: 0, surface: 'stone', sign: false,
+  }); // x 80..100, z -44..-8
+  const FLY = building({
+    x: 90, z: -28, w: 12, d: 14, h: 12, face: 'e', color: '#ddd0c1', seed: 1,
+    awnings: 0, chimneys: 0, surface: 'stone', sign: false, base: OPERA.top,
+  }); // x 84..96, top ~30.7
+  // Rows of tall arched windows on the side facing the plaza, and on the fly tower.
+  for (let x = 82.5; x <= 98; x += 3.1) {
+    for (const y of [1.2, 5.6, 10.0]) archWindow(x, -8, 0.04, y, 1.3, 2.6);
+  }
+  for (let x = 86; x <= 94; x += 2.7) archWindow(x, -21, 0.04, OPERA.top + 4, 1.1, 3.2);
+  // Corinthian portico on Bow Street.
+  block(101.4, -26, 2.8, 16, 0, 1.0, '#e2d6c4', stone); // podium
+  for (const z of [-33, -30, -27, -24, -21, -18]) {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 11, 16), worldMat('#f3ebde', stone));
+    col.position.set(101.8, 6.5, z);
+    col.castShadow = col.receiveShadow = true;
+    scene.add(col);
+    physics.addBox(101.8, 1, z, 1.0, 11, 1.0, { camera: false });
+  }
+  block(101.5, -26, 3.4, 17, 12, 0.9, '#e9dfcf', stone); // portico roof, top 12.9
+  block(101.6, -26, 2.8, 12, 12.9, 1.4, '#ddd2c0', stone); // pediment, top 14.3
+
+  // Bow Street terraces (east side, facing the Opera House).
+  const BOW = [
+    building({ x: 112, z: -36, w: 8, d: 14, h: 12, face: 'w', color: '#c9a27e', seed: 0, awnings: 1 }),
+    building({ x: 112, z: -20, w: 8, d: 14, h: 14, face: 'w', color: '#b47c62', seed: 3, awnings: 1 }),
+    building({ x: 112, z: -4, w: 8, d: 14, h: 11, face: 'w', color: '#d8b892', seed: 1, awnings: 1 }),
+    building({ x: 112, z: 12, w: 8, d: 14, h: 13, face: 'w', color: '#a86f58', seed: 4, awnings: 1 }),
+    building({ x: 112, z: 28, w: 8, d: 14, h: 12, face: 'w', color: '#cfa985', seed: 2, awnings: 1 }),
+  ];
+  // Russell Street terrace (south side, facing the plaza).
+  const RUSSELL = [
+    building({ x: 62, z: 34, w: 14, d: 12, h: 11, face: 'n', color: '#c98f6b', seed: 1 }),
+    building({ x: 77, z: 34, w: 14, d: 12, h: 13, face: 'n', color: '#d9b48c', seed: 3 }),
+    building({ x: 92, z: 34, w: 14, d: 12, h: 10, face: 'n', color: '#b5715a', seed: 0 }),
+  ];
+  // Plaza furniture.
+  [[58, -12], [74, -12], [104, -4], [104, 16], [60, 20], [88, 20]].forEach(([x, z]) => lamp(x, z));
+  [[70, 2], [86, 2], [56, 6]].forEach(([x, z]) => planter(x, z));
+  [[64, 10], [80, 10]].forEach(([x, z]) => block(x, z, 2.2, 0.6, 0, 0.45, '#6d5442'));
+
+  // Cobbles everywhere on the open ground of the district.
+  {
+    const tile = new THREE.BoxGeometry(1.8, 0.05, 1.8);
+    const spots = [];
+    for (let x = 49; x <= 117; x += 2) for (let z = -44; z <= 44; z += 2) {
+      if (physics.fits(V(x, 0.01, z), 0.9, 0.04)) spots.push([x, z]);
+    }
+    const inst = new THREE.InstancedMesh(tile, worldMat('#ffffff', { surface: 'plaster' }), spots.length);
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    const tones = ['#c9b0a8', '#bfa39a', '#d3bdb3', '#b79c92', '#cdb0a2'];
+    spots.forEach(([x, z], i) => {
+      m.makeTranslation(x, 0.025, z);
+      inst.setMatrixAt(i, m);
+      inst.setColorAt(i, c.set(tones[Math.abs(i * 7 + x * 3 + z * 13) % tones.length]));
+    });
+    inst.receiveShadow = true;
+    scene.add(inst);
+  }
+
   // ---------------------------------------------------------- corner groves
   // Little round trees filling the empty corners between the terraces and the fog.
   // Every tree is merged into one mesh per colour; canopies are climbable like the
@@ -365,9 +497,10 @@ export function buildWorld(scene, physics) {
   };
   const fogWalls = {
     stpauls: fogWall(-27, -45, -27, 45),
-    north: fogWall(-75, -45, 48, -45),
-    south: fogWall(-75, 45, 48, 45),
-    east: fogWall(48, -45, 48, 45),
+    opera: fogWall(48, -45, 48, 45),
+    north: fogWall(-75, -45, 118, -45),
+    south: fogWall(-75, 45, 118, 45),
+    east: fogWall(118, -45, 118, 45),
     west: fogWall(-75, -45, -75, 45),
   };
 
@@ -382,7 +515,7 @@ export function buildWorld(scene, physics) {
   const p = (b, t, y, out) => b.at(t, y, out);
   return {
     spawn: V(0, 0.72, 15),
-    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0)],
+    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0), V(66, 14.6, -26)],
     fragmentSpots: [
       [
         V(-12, 9.0, 4), // market glass roof, west end
@@ -395,6 +528,12 @@ export function buildWorld(scene, physics) {
         V(-33.2, 12.2, 0), // portico pediment
         V(-58, 14.6, 0), // west end of the church ridge
         V(-62, SP[0].top + 0.6, -27), // churchyard terrace roof
+      ],
+      [
+        V(90, FLY.top + 0.6, -28), // top of the fly tower, the highest point yet
+        V(101.6, 14.9, -26), // portico pediment on Bow Street
+        V(77, RUSSELL[1].top + 0.6, 36), // Russell Street roof
+        V(112, BOW[3].top + 0.6, 12), // Bow Street roof
       ],
     ],
     fogWalls,
