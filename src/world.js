@@ -9,11 +9,14 @@ import { worldMat } from './materials.js';
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const AWNINGS = ['#e46a5a', '#4f9bd9', '#f0bf4c', '#5fb88a', '#c46ad1'];
 const TRIM = '#efe3cf';
+const WINDOW_BOXES = ['#e94f8a', '#4fb3e8', '#7cc243', '#f08a3c', '#f4c430'];
+const FLOWERS = ['#ff5fa2', '#ffe04f', '#ff8a3d', '#b56cff', '#ffffff', '#ff4f6d'];
 
 export const DISTRICT_BOUNDS = [
   [-27, -45, 48, 45], // 0 Piazza & Market Building
   [-75, -45, -27, 45], // 1 St Paul's Church
   [48, -45, 118, 45], // 2 Royal Opera House
+  [48, -105, 118, -45], // 3 Neal's Yard
 ];
 
 export function buildWorld(scene, physics) {
@@ -75,13 +78,26 @@ export function buildWorld(scene, physics) {
     scene.add(inst);
   }
 
+  // A row of little round flowers along a window box (decor only, merged per colour).
+  // at(t, y, out) maps façade coordinates to the world, as in building().
+  const flowerRow = (at, t, y, out, width, k) => {
+    for (let i = 0; i < 4; i++) {
+      const p = at(t - width / 2 + (width / 4) * (i + 0.5), y + 0.08, out);
+      const g = new THREE.SphereGeometry(0.13, 7, 5);
+      g.translate(p.x, p.y, p.z);
+      addDecor(FLOWERS[(k + i * 2) % FLOWERS.length], g);
+    }
+  };
+
   // ---------------------------------------------------------- terrace buildings
   // face: which side looks onto the street. Ledges every 3.2 m are rest points.
   // back: optionally dress the rear too (plainer: windows, ledges, pipe, back door),
   //       for buildings whose backs are on show.
   // base: build on top of something (e.g. a fly tower on a roof).
+  // boxes: painted window boxes full of flowers under every window (Neal's Yard).
   const building = ({
     x, z, w, d, h, face, back, color, seed = 0, awnings = 2, chimneys = 2, base = 0, surface = 'brick', sign = true,
+    boxes = false,
   }) => {
     block(x, z, w, d, base, h, color, { surface });
     block(x, z, w + 0.6, d + 0.6, base + h, 0.35, TRIM, { surface: 'plaster' }); // roof cap overhang
@@ -107,7 +123,7 @@ export function buildWorld(scene, physics) {
       return { span, alongX, at, onFace, decorFace };
     };
     // Cornice ledges with glowing window tiles between them, and a drainpipe.
-    const storeys = ({ span, onFace, decorFace }, pipeAt) => {
+    const storeys = ({ span, at, onFace, decorFace }, pipeAt) => {
       const ledgeYs = [];
       for (let y = base + 3.2; y < base + h - 1.4; y += 3.2) {
         onFace(0, y - 0.25, 0.35, span - 1.2, 0.25, 0.7, TRIM, { surface: 'plaster' });
@@ -119,6 +135,11 @@ export function buildWorld(scene, physics) {
         for (let i = 0; i < cols; i++) {
           const t = -span / 2 + (span / cols) * (i + 0.5);
           decorFace(t, ly + 0.55, 0.04, 1.0, 1.5, 0.08, '#ffd88a', '#6e4a10', 'glass');
+          if (boxes) {
+            const k = seed + i + Math.round(ly);
+            decorFace(t, ly + 0.28, 0.28, 1.2, 0.26, 0.42, WINDOW_BOXES[k % WINDOW_BOXES.length]);
+            flowerRow(at, t, ly + 0.54, 0.28, 1.1, k);
+          }
         }
       }
       // Drainpipe (visual; the whole wall is climbable anyway).
@@ -402,6 +423,89 @@ export function buildWorld(scene, physics) {
     scene.add(inst);
   }
 
+  // ---------------------------------------------------------- 3: Neal's Yard
+  // North of the Opera House (x 48..118, z -105..-45): a small, hidden courtyard of
+  // brightly painted houses with window boxes, reached by one narrow alley (Shorts
+  // Gardens, x 62..66) from the Opera House plaza. Signature climb: the tall pink
+  // house's staircase of window boxes, with the lantern on its roof.
+  const PAINT = ['#f2a7c3', '#a9dc6e', '#8fcdf0', '#f6b45e', '#f4dc6a', '#79cdb9', '#c9a2e8'];
+  const painted = { surface: 'plaster', boxes: true };
+  // South row; its backs face the Opera House plaza, so they're dressed too.
+  const NYS = [
+    building({ x: 56, z: -54, w: 12, d: 12, h: 10, face: 'n', back: 's', color: PAINT[0], seed: 0, ...painted }),
+    building({ x: 73, z: -54, w: 14, d: 12, h: 12, face: 'n', back: 's', color: PAINT[2], seed: 1, ...painted }),
+    building({ x: 89, z: -54, w: 18, d: 12, h: 11, face: 'n', back: 's', color: PAINT[3], seed: 2, chimneys: 1, ...painted }),
+    building({ x: 107, z: -54, w: 16, d: 12, h: 13, face: 'n', back: 's', color: PAINT[1], seed: 3, ...painted }),
+  ];
+  // North row (the signature house goes in the gap at x 82..100).
+  const NYN = [
+    building({ x: 58, z: -96, w: 16, d: 12, h: 13, face: 's', color: PAINT[4], seed: 4, ...painted }),
+    building({ x: 74, z: -96, w: 16, d: 12, h: 11, face: 's', color: PAINT[5], seed: 0, ...painted }),
+    building({ x: 108, z: -96, w: 16, d: 12, h: 12, face: 's', color: PAINT[6], seed: 1, ...painted }),
+  ];
+  // West and east rows.
+  const NYW = [
+    building({ x: 56, z: -82, w: 12, d: 16, h: 11, face: 'e', color: PAINT[1], seed: 2, awnings: 1, ...painted }),
+    building({ x: 56, z: -67, w: 12, d: 14, h: 12, face: 'e', color: PAINT[3], seed: 3, awnings: 1, ...painted }),
+  ];
+  const NYE = [
+    building({ x: 110, z: -82, w: 12, d: 16, h: 14, face: 'w', color: PAINT[2], seed: 4, awnings: 1, ...painted }),
+    building({ x: 110, z: -67, w: 12, d: 14, h: 11, face: 'w', color: PAINT[0], seed: 0, awnings: 1, ...painted }),
+  ];
+
+  // The signature house: tall, pink, no cornices; only a zig-zag staircase of
+  // window boxes to rest on. Yard face at z = -90; the lantern sits on its roof.
+  const SIG_H = 20;
+  block(91, -96, 18, 12, 0, SIG_H, '#f07fae', { surface: 'plaster' });
+  block(91, -96, 18.6, 12.6, SIG_H, 0.35, TRIM, { surface: 'plaster' });
+  const SIG_TOP = SIG_H + 0.35;
+  const sigAt = (t, y, out) => V(91 + t, y, -90 + out);
+  for (let i = 0; i < 11; i++) {
+    const y = 1.7 + i * 1.65;
+    const t = (i % 2 ? 1 : -1) * (1.5 + (i % 3) * 0.2);
+    decorBox(91 + t, y + 0.45, -89.96, 1.1, 1.3, 0.08, '#ffd88a', '#6e4a10', 'glass');
+    block(91 + t, -89.65, 1.5, 0.7, y, 0.4, WINDOW_BOXES[i % WINDOW_BOXES.length], { surface: 'plaster' });
+    flowerRow(sigAt, t, y + 0.4, 0.35, 1.4, i);
+  }
+  decorBox(91, 0, -89.97, 1.4, 2.4, 0.06, '#3d2f27'); // front door
+
+  // The yard: a tree to climb, planters, benches, lamps and water butts.
+  tree(84, -74);
+  [[72, -82], [98, -68]].forEach(([x, z]) => planter(x, z));
+  [[76, -66], [96, -84]].forEach(([x, z]) => block(x, z, 2.2, 0.6, 0, 0.45, '#6d5442'));
+  [[70, -70], [100, -78]].forEach(([x, z]) => lamp(x, z));
+  const butt = (x, z, y = 0, r = 0.55, h = 1.1, color = '#4a7a5c') => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.92, h, 16), worldMat(color));
+    m.position.set(x, y + h / 2, z);
+    m.castShadow = m.receiveShadow = true;
+    scene.add(m);
+    physics.addBox(x, y, z, r * 2, h, r * 2);
+  };
+  butt(64.6, -87);
+  butt(101.4, -63);
+  // A rooftop water tank on the south row, to stand on.
+  butt(90, -53, NYS[2].top, 1.1, 2.0, '#7b8fa0');
+
+  // Pastel cobbles across the yard and alley.
+  {
+    const tile = new THREE.BoxGeometry(1.8, 0.05, 1.8);
+    const spots = [];
+    for (let x = 49; x <= 117; x += 2) for (let z = -104; z <= -46; z += 2) {
+      if (physics.fits(V(x, 0.01, z), 0.9, 0.04)) spots.push([x, z]);
+    }
+    const inst = new THREE.InstancedMesh(tile, worldMat('#ffffff', { surface: 'plaster' }), spots.length);
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    const tones = ['#cdbfa6', '#c4b8b0', '#d6c9b3', '#bfb59f', '#d1c2b8'];
+    spots.forEach(([x, z], i) => {
+      m.makeTranslation(x, 0.025, z);
+      inst.setMatrixAt(i, m);
+      inst.setColorAt(i, c.set(tones[Math.abs(i * 7 + x * 3 + z * 13) % tones.length]));
+    });
+    inst.receiveShadow = true;
+    scene.add(inst);
+  }
+
   // ---------------------------------------------------------- corner groves
   // Little round trees filling the empty corners between the terraces and the fog.
   // Every tree is merged into one mesh per colour; canopies are climbable like the
@@ -520,7 +624,11 @@ export function buildWorld(scene, physics) {
   const fogWalls = {
     stpauls: fogWall(-27, -45, -27, 45),
     opera: fogWall(48, -45, 48, 45),
-    north: fogWall(-75, -45, 118, -45),
+    nealsyard: fogWall(48, -45, 118, -45),
+    north: fogWall(-75, -45, 48, -45),
+    nyWest: fogWall(48, -105, 48, -45),
+    nyNorth: fogWall(48, -105, 118, -105),
+    nyEast: fogWall(118, -105, 118, -45),
     south: fogWall(-75, 45, 118, 45),
     east: fogWall(118, -45, 118, 45),
     west: fogWall(-75, -45, -75, 45),
@@ -537,7 +645,7 @@ export function buildWorld(scene, physics) {
   const p = (b, t, y, out) => b.at(t, y, out);
   return {
     spawn: V(0, 0.72, 15),
-    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0), V(66, 14.6, -26)],
+    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0), V(66, 14.6, -26), V(91, SIG_TOP, -96)],
     fragmentSpots: [
       [
         V(-12, 9.0, 4), // market glass roof, west end
@@ -556,6 +664,13 @@ export function buildWorld(scene, physics) {
         V(101.6, 14.9, -26), // portico pediment on Bow Street
         V(77, RUSSELL[1].top + 0.6, 36), // Russell Street roof
         V(112, BOW[3].top + 0.6, 12), // Bow Street roof
+      ],
+      [
+        V(84, 6.2, -74), // up in the yard's tree
+        V(90, NYS[2].top + 2.6, -53), // on the rooftop water tank
+        V(110, NYE[0].top + 0.6, -84), // tallest east roof
+        V(56, NYN[0].top + 0.6, -97), // north-west roof
+        V(55, NYW[1].top + 0.6, -67), // west roof by the alley
       ],
     ],
     fogWalls,

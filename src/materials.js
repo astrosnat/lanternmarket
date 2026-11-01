@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 // Shared uniforms for the "wake" colour wave. Every world material reads these,
 // so lighting a lantern recolours the whole district in one place.
-export const MAX_DISTRICTS = 4;
+export const MAX_DISTRICTS = 9; // 8 districts + the sky-market finale
 
 export const wakeUniforms = {
   uWakeCenter: { value: Array.from({ length: MAX_DISTRICTS }, () => new THREE.Vector3()) },

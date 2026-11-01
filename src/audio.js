@@ -109,7 +109,7 @@ export class AudioSys {
     this.tone({ freq: f * 5.4, t, dur: dur * 0.15, gain: gain * 0.1, dest });
   }
 
-  noise(t, dur, gain, freq, type = 'lowpass') {
+  noise(t, dur, gain, freq, type = 'lowpass', dest = this.bus) {
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuffer();
@@ -119,7 +119,7 @@ export class AudioSys {
     const g = ctx.createGain();
     g.gain.setValueAtTime(gain, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f).connect(g).connect(this.bus);
+    src.connect(f).connect(g).connect(dest);
     src.start(t, Math.random() * 0.5);
     src.stop(t + dur + 0.05);
   }
@@ -341,6 +341,25 @@ export class AudioSys {
         this.bowed(chord[k] + 24, t, STEP * 4 * 0.95, 0.022, opera, true);
       }
     }
+
+    // Layer 3 — Neal's Yard: a marimba bouncing through the chord in a syncopated
+    // pattern, with a soft shaker on the off-beats.
+    const yard = this.layers.get(3);
+    if (yard) {
+      const PATTERN = { 0: 0, 2: 1, 3: 2, 5: 1, 6: 2, 7: 0 };
+      if (s in PATTERN) {
+        const up = (bar % 4 === 3 && s >= 5) ? 24 : 12;
+        this.marimba(chord[PATTERN[s]] + up, t, s === 0 ? 0.07 : 0.05, yard);
+      }
+      if (s % 2 === 1) this.noise(t, 0.09, 0.025, 6000, 'highpass', yard);
+    }
+  }
+
+  /** Marimba: a sine bar with its bright 4th-harmonic tick and a quick decay. */
+  marimba(m, t, gain, dest) {
+    const f = mtof(m);
+    this.tone({ freq: f, t, dur: 0.55, gain, attack: 0.003, dest });
+    this.tone({ freq: f * 4, t, dur: 0.07, gain: gain * 0.35, attack: 0.002, dest });
   }
 
   /** Bowed string: detuned saws through a soft filter, slow swell, delayed vibrato. */
