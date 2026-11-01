@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { worldMat } from './materials.js';
+import { worldMat, toonMat } from './materials.js';
 
 // Grey-box Covent Garden. x = east, z = south, y = up (metres).
 // The Piazza and Market Building sit at the origin; St Paul's is west.
@@ -17,6 +17,7 @@ export const DISTRICT_BOUNDS = [
   [-75, -45, -27, 45], // 1 St Paul's Church
   [48, -45, 118, 45], // 2 Royal Opera House
   [48, -105, 118, -45], // 3 Neal's Yard
+  [-27, -105, 48, -45], // 4 Seven Dials
 ];
 
 export function buildWorld(scene, physics) {
@@ -211,10 +212,10 @@ export function buildWorld(scene, physics) {
 
   // North terrace (faces the Piazza to the south).
   const N = [
-    building({ x: -22, z: -36, w: 14, d: 12, h: 11, face: 's', color: '#c98f6b', seed: 0 }),
-    building({ x: -7, z: -36, w: 14, d: 12, h: 14, face: 's', color: '#d8b48a', seed: 1 }),
-    building({ x: 8, z: -36, w: 14, d: 12, h: 10, face: 's', color: '#b5715a', seed: 2 }),
-    building({ x: 23, z: -36, w: 14, d: 12, h: 13, face: 's', color: '#e0c9a0', seed: 3 }),
+    building({ x: -22, z: -36, back: 'n', w: 14, d: 12, h: 11, face: 's', color: '#c98f6b', seed: 0 }),
+    building({ x: -7, z: -36, back: 'n', w: 14, d: 12, h: 14, face: 's', color: '#d8b48a', seed: 1 }),
+    building({ x: 8, z: -36, back: 'n', w: 14, d: 12, h: 10, face: 's', color: '#b5715a', seed: 2 }),
+    building({ x: 23, z: -36, back: 'n', w: 14, d: 12, h: 13, face: 's', color: '#e0c9a0', seed: 3 }),
   ];
   block(31, -36, 2.2, 12, 0, 12, '#a98a7a', { surface: 'brick' });
   // East terrace (towards the Opera House).
@@ -445,8 +446,9 @@ export function buildWorld(scene, physics) {
   ];
   // West and east rows.
   const NYW = [
-    building({ x: 56, z: -82, w: 12, d: 16, h: 11, face: 'e', color: PAINT[1], seed: 2, awnings: 1, ...painted }),
-    building({ x: 56, z: -67, w: 12, d: 14, h: 12, face: 'e', color: PAINT[3], seed: 3, awnings: 1, ...painted }),
+    building({ x: 56, z: -82, w: 12, d: 16, h: 11, face: 'e', back: 'w', color: PAINT[1], seed: 2, awnings: 1, ...painted }),
+    // Shortened to leave Monmouth Street (z -74..-70) running west to Seven Dials.
+    building({ x: 56, z: -65, w: 12, d: 10, h: 12, face: 'e', back: 'w', color: PAINT[3], seed: 3, awnings: 1, ...painted }),
   ];
   const NYE = [
     building({ x: 110, z: -82, w: 12, d: 16, h: 14, face: 'w', color: PAINT[2], seed: 4, awnings: 1, ...painted }),
@@ -501,6 +503,120 @@ export function buildWorld(scene, physics) {
       m.makeTranslation(x, 0.025, z);
       inst.setMatrixAt(i, m);
       inst.setColorAt(i, c.set(tones[Math.abs(i * 7 + x * 3 + z * 13) % tones.length]));
+    });
+    inst.receiveShadow = true;
+    scene.add(inst);
+  }
+
+
+  // ---------------------------------------------------------- 4: Seven Dials
+  // North of the Piazza, west of Neal's Yard (x -27..48, z -105..-45). Seven streets
+  // radiate from a circus round the sundial pillar; Monmouth Street (z -74..-70)
+  // comes in from Neal's Yard along the east street. The pillar is too tall to climb
+  // on scarf alone: its ledges are ghosts that turn solid for a while when a chirp
+  // ripple passes (and for good once the lantern on top is lit).
+  const SD_C = V(10, 0, -72);
+  const SD_COLORS = ['#cfd8c8', '#b9897a', '#e3d4b8', '#9fb8ae', '#c48f6a', '#d9c7a3', '#a8a296'];
+  const SD_FRAG_SKIP = 3; // six of the seven wedge roofs hold a fragment
+  const sdRing = [];
+  for (let k = 0; k < 7; k++) {
+    const a = ((k + 0.5) / 7) * Math.PI * 2; // the wedge between street k and k+1
+    const cx = SD_C.x + Math.cos(a) * 21;
+    const cz = SD_C.z + Math.sin(a) * 21;
+    const face = Math.abs(Math.cos(a)) > Math.abs(Math.sin(a))
+      ? (Math.cos(a) > 0 ? 'w' : 'e')
+      : (Math.sin(a) > 0 ? 'n' : 's');
+    const b = building({
+      x: cx, z: cz, w: 12, d: 12, h: 11 + ((k * 3) % 4), face, color: SD_COLORS[k], seed: k,
+      surface: k % 2 ? 'brick' : 'plaster',
+    });
+    sdRing.push({ k, front: b.at(0, 0, 3), roof: b.at(0, b.top, -2), frag: b.at(0, b.top + 0.6, -2), top: b.top });
+  }
+
+  // The sundial pillar: stepped plinth, a tall column, and a hexagonal head with six
+  // copper sundials (the column itself is the seventh dial).
+  const COLUMN_TOP = 29;
+  const HEAD_H = 2.5;
+  // Three low steps (each under the step-up height) you can simply walk up.
+  block(SD_C.x, SD_C.z, 5.2, 5.2, 0, 0.33, '#cfc6b4', stone);
+  block(SD_C.x, SD_C.z, 4.2, 4.2, 0.33, 0.33, '#d3cab8', stone);
+  block(SD_C.x, SD_C.z, 3.2, 3.2, 0.66, 0.33, '#d6cdbb', stone);
+  block(SD_C.x, SD_C.z, 2.2, 2.2, 0.99, COLUMN_TOP - 0.99, '#ddd5c6', stone);
+  {
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 1.75, HEAD_H, 6), worldMat('#e6dece', stone));
+    head.position.set(SD_C.x, COLUMN_TOP + HEAD_H / 2, SD_C.z);
+    head.castShadow = head.receiveShadow = true;
+    scene.add(head);
+    physics.addBox(SD_C.x, COLUMN_TOP, SD_C.z, 3.0, HEAD_H, 3.0);
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + (i / 6) * Math.PI * 2; // centre of each hexagon face
+      const r = 1.75 * Math.cos(Math.PI / 6) + 0.03;
+      const px = SD_C.x + Math.cos(a) * r;
+      const pz = SD_C.z + Math.sin(a) * r;
+      const dial = new THREE.CylinderGeometry(0.62, 0.62, 0.05, 20);
+      dial.rotateX(Math.PI / 2);
+      dial.rotateY(Math.PI / 2 - a);
+      dial.translate(px, COLUMN_TOP + HEAD_H / 2, pz);
+      addDecor('#c87533', dial);
+      const gnomon = new THREE.BoxGeometry(0.06, 0.45, 0.32);
+      gnomon.translate(0, 0, 0.16);
+      gnomon.rotateY(Math.PI / 2 - a);
+      gnomon.translate(px, COLUMN_TOP + HEAD_H / 2 + 0.1, pz);
+      addDecor('#3a3530', gnomon);
+    }
+  }
+  const SD_TOP = COLUMN_TOP + HEAD_H;
+
+  // Ghost ledges: a collar of four slabs round the column every ~5 m.
+  const chirpLedges = [];
+  for (const y of [5, 10, 15, 20, 24.5]) {
+    const mat = toonMat('#3fd0c0', { transparent: true, opacity: 0.18, emissive: '#0f4f49', depthWrite: false });
+    const parts = [
+      [0, -1.45, 3.6, 0.7], [0, 1.45, 3.6, 0.7], // north, south
+      [-1.45, 0, 0.7, 2.2], [1.45, 0, 0.7, 2.2], // west, east
+    ];
+    const geos = [];
+    const colliders = [];
+    for (const [dx, dz, w, d] of parts) {
+      const g = new THREE.BoxGeometry(w, 0.35, d);
+      g.translate(SD_C.x + dx, y + 0.175, SD_C.z + dz);
+      geos.push(g);
+      const c = physics.addBox(SD_C.x + dx, y, SD_C.z + dz, w, 0.35, d, { camera: false });
+      c.enabled = false;
+      colliders.push(c);
+    }
+    const mesh = new THREE.Mesh(mergeGeometries(geos), mat);
+    mesh.renderOrder = 2;
+    scene.add(mesh);
+    chirpLedges.push({ district: 4, center: V(SD_C.x, y, SD_C.z), colliders, mesh });
+  }
+
+  // Bollards ring the circus; lamps stand along the streets.
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + 0.2;
+    block(SD_C.x + Math.cos(a) * 9, SD_C.z + Math.sin(a) * 9, 0.35, 0.35, 0, 0.8, '#2f3a3a', { collide: false });
+  }
+  for (let k = 1; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2; // along street k (street 0 is Monmouth Street; kept clear)
+    lamp(SD_C.x + Math.cos(a) * 12.5, SD_C.z + Math.sin(a) * 12.5);
+  }
+
+  // Cobbles laid in rings round the pillar.
+  {
+    const tile = new THREE.BoxGeometry(1.8, 0.05, 1.8);
+    const spots = [];
+    for (let x = -26; x <= 47; x += 2) for (let z = -104; z <= -46; z += 2) {
+      if (physics.fits(V(x, 0.01, z), 0.9, 0.04)) spots.push([x, z]);
+    }
+    const inst = new THREE.InstancedMesh(tile, worldMat('#ffffff', { surface: 'plaster' }), spots.length);
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    const tones = ['#c3c6bd', '#b7bdb3', '#cfcfc4', '#adb6ad', '#c9c2b4'];
+    spots.forEach(([x, z], i) => {
+      const ring = Math.floor(Math.hypot(x - SD_C.x, z - SD_C.z) / 3);
+      m.makeTranslation(x, 0.025, z);
+      inst.setMatrixAt(i, m);
+      inst.setColorAt(i, c.set(tones[(ring + (i % 2)) % tones.length]));
     });
     inst.receiveShadow = true;
     scene.add(inst);
@@ -578,12 +694,16 @@ export function buildWorld(scene, physics) {
       }
     };
     // Kept ~3 m inside the fog walls so no canopy pokes through them.
-    fill(34, -42, 44, -31); // Piazza, north-east
+    fill(41, -42, 45, -31); // Piazza, north-east (kept to the edge: Long Acre runs through here)
     fill(34, 32, 44, 42); // Piazza, south-east
     fill(-72, -42, -67, -33); // St Paul's, north-west
     fill(-72, 33, -67, 42); // St Paul's, south-west
     fill(-33, -42, -29, -33); // St Paul's, north-east
     fill(-33, 33, -29, 42); // St Paul's, south-east
+    fill(-24, -102, -12, -91); // Seven Dials, north-west
+    fill(-24, -56, -12, -48); // Seven Dials, south-west
+    fill(36, -102, 45, -91); // Seven Dials, north-east
+    fill(41, -57, 45, -48); // Seven Dials, south-east (clear of Long Acre)
 
     for (const [color, geos] of grove) {
       const mesh = new THREE.Mesh(mergeGeometries(geos), worldMat(color));
@@ -625,8 +745,13 @@ export function buildWorld(scene, physics) {
     stpauls: fogWall(-27, -45, -27, 45),
     opera: fogWall(48, -45, 48, 45),
     nealsyard: fogWall(48, -45, 118, -45),
-    north: fogWall(-75, -45, 48, -45),
-    nyWest: fogWall(48, -105, 48, -45),
+    north: fogWall(-75, -45, -27, -45),
+    sdPiazza: fogWall(-27, -45, 21, -45),
+    // Long Acre: from the junction outside the Opera House's west gate, north into Seven Dials.
+    sdLongAcre: fogWall(21, -45, 48, -45),
+    sevendials: fogWall(48, -105, 48, -45),
+    sdWest: fogWall(-27, -105, -27, -45),
+    sdNorth: fogWall(-27, -105, 48, -105),
     nyNorth: fogWall(48, -105, 118, -105),
     nyEast: fogWall(118, -105, 118, -45),
     south: fogWall(-75, 45, 118, 45),
@@ -645,7 +770,7 @@ export function buildWorld(scene, physics) {
   const p = (b, t, y, out) => b.at(t, y, out);
   return {
     spawn: V(0, 0.72, 15),
-    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0), V(66, 14.6, -26), V(91, SIG_TOP, -96)],
+    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0), V(66, 14.6, -26), V(91, SIG_TOP, -96), V(SD_C.x, SD_TOP, SD_C.z)],
     fragmentSpots: [
       [
         V(-12, 9.0, 4), // market glass roof, west end
@@ -672,7 +797,10 @@ export function buildWorld(scene, physics) {
         V(56, NYN[0].top + 0.6, -97), // north-west roof
         V(55, NYW[1].top + 0.6, -67), // west roof by the alley
       ],
+      sdRing.filter((r) => r.k !== SD_FRAG_SKIP).map((r) => r.frag), // Seven Dials roofs
     ],
     fogWalls,
+    chirpLedges,
+    sevenDials: { center: SD_C, top: SD_TOP, ring: sdRing.filter((r) => r.k !== SD_FRAG_SKIP) },
   };
 }

@@ -23,13 +23,18 @@ export const DISTRICTS = [
   },
   {
     // Crimson & rose gold. Opens the way to Neal's Yard once that district exists.
-    name: 'Royal Opera House', hue: '#e0405f', fog: '#efd4d0', maxRadius: 90, unlocks: ['nealsyard'],
+    name: 'Royal Opera House', hue: '#e0405f', fog: '#efd4d0', maxRadius: 90, unlocks: ['nealsyard', 'sdLongAcre'],
     petals: ['#c8243f', '#e8a598', '#f2c4b6', '#b76e79'],
   },
   {
     // Lime, pink & sky blue. Opens the way to Seven Dials once that district exists.
-    name: "Neal's Yard", hue: '#8fe05a', fog: '#e4f1dc', maxRadius: 64, unlocks: [],
+    name: "Neal's Yard", hue: '#8fe05a', fog: '#e4f1dc', maxRadius: 64, unlocks: ['sevendials'],
     petals: ['#9be15d', '#f49ac1', '#8ccbf0', '#fff3a8'],
+  },
+  {
+    // Teal & copper. Lighting it opens a shortcut back into the Piazza; Drury Lane next.
+    name: 'Seven Dials', hue: '#2bb5a8', fog: '#d8ece8', maxRadius: 56, unlocks: ['sdPiazza'],
+    petals: ['#2bb5a8', '#c87533', '#7fc8b5', '#f2e6cf'],
   },
 ];
 
@@ -39,6 +44,9 @@ const AWAKE_SUN = new THREE.Color('#ffe6c0');
 const WAVE_TIME = 5;
 const CHIRP_MAX_HOLD = 1.2;
 const RIPPLE_SPEED = 18;
+// Chirp ledges stay solid this long after the ripple reaches them (flickering at the end).
+const LEDGE_TIME = 10;
+const LEDGE_WARN = 2;
 // Fragment states that count as "still out there" for the lantern's hint.
 const OUT_THERE = new Set(['sleep', 'waking', 'awake', 'returning']);
 
@@ -391,6 +399,7 @@ export class Game {
     this.fogColor = ASLEEP_FOG.clone();
 
     this.particles = new Particles(scene);
+    this.chirpLedges = (world.chirpLedges ?? []).map((l) => ({ ...l, from: Infinity, until: -Infinity, vis: 0 }));
     this.lastStep = 0;
     this.fxCtx = {
       player: this.player,
@@ -463,6 +472,36 @@ export class Game {
     }
   }
 
+  /**
+   * Ghost ledges: solid from when a chirp ripple reaches them until LEDGE_TIME later,
+   * and for good once their district is lit. They never vanish from under the
+   * wanderer's feet, and never turn solid inside it.
+   */
+  updateChirpLedges(dt) {
+    const w = this.w;
+    const t = this.time;
+    for (const l of this.chirpLedges) {
+      const lit = this.districts[l.district]?.lit;
+      const standing = l.colliders.includes(w.groundC);
+      let want = lit || standing || (t >= l.from && t < l.until);
+      const solid = l.colliders[0].enabled;
+      if (want && !solid) {
+        const inside = l.colliders.some((c) =>
+          w.pos.x + 0.24 > c.min.x && w.pos.x - 0.24 < c.max.x &&
+          w.pos.z + 0.24 > c.min.z && w.pos.z - 0.24 < c.max.z &&
+          w.pos.y + 0.62 > c.min.y && w.pos.y < c.max.y);
+        if (inside) want = false;
+      }
+      for (const c of l.colliders) c.enabled = want;
+      // Look: a faint ghost, solid and glowing when active, flickering as it runs out.
+      let target = want ? 1 : 0.18;
+      if (want && !lit && !standing && l.until - t < LEDGE_WARN) target = 0.55 + 0.45 * Math.sign(Math.sin(t * 18));
+      l.vis += (target - l.vis) * damp(dt, 0.08);
+      l.mesh.material.opacity = l.vis;
+      l.mesh.material.depthWrite = l.vis > 0.95;
+    }
+  }
+
   /** Every fragment in the slice has been woken by a chirp (collected ones count). */
   get allWoken() {
     return this.fragments.every((f) => f.state !== 'sleep' && f.state !== 'waking');
@@ -532,6 +571,8 @@ export class Game {
     for (const d of this.districts) d.lantern.update(dt, this.time, d.needed);
     this.ripples = this.ripples.filter((r) => r.update(dt));
     this.bursts = this.bursts.filter((b) => b.update(dt));
+
+    this.updateChirpLedges(dt);
 
     // Little dust puffs from running feet.
     const step = Math.floor(w.walkPhase / Math.PI);
@@ -615,6 +656,15 @@ export class Game {
     this.particles.chirp(origin, h / CHIRP_MAX_HOLD);
     this.chirpLight.position.copy(origin);
     this.chirpLight.intensity = 6 + h * 10;
+
+    // Ghost ledges the ripple touches turn solid for a while.
+    for (const l of this.chirpLedges) {
+      const d = l.center.distanceTo(origin);
+      if (d >= radius) continue;
+      const arrive = now + d / RIPPLE_SPEED;
+      if (!(now >= l.from && now < l.until)) l.from = arrive; // already solid: stay solid
+      l.until = arrive + LEDGE_TIME;
+    }
 
     // Wake sleeping fragments the ripple touches.
     for (const f of this.fragments) {

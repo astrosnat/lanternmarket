@@ -170,7 +170,8 @@ const ZERO = new THREE.Vector3();
 
 // ------------------------------------------------------------------ legs
 
-const go = (x, z, y) => ({ kind: 'go', x, z, y });
+// push: optional [x, z] to push along once there (e.g. straight into a column to climb it).
+const go = (x, z, y, push) => ({ kind: 'go', x, z, y, push });
 const chirp = (hold = 1.2) => ({ kind: 'chirp', hold });
 const wait = (sec) => ({ kind: 'wait', sec });
 const section = (name) => ({ kind: 'section', name });
@@ -180,7 +181,7 @@ function runGo(leg) {
   const target = new THREE.Vector3(leg.x, leg.y ?? 0, leg.z);
   const start = t;
   let pushDir = new THREE.Vector3(leg.x - w.pos.x, 0, leg.z - w.pos.z).normalize();
-  const climbDir = pushDir.clone(); // keep pushing this way to climb on up
+  const climbDir = leg.push ? new THREE.Vector3(leg.push[0], 0, leg.push[1]).normalize() : pushDir.clone(); // keep pushing this way to climb on up
   let checkT = t;
   let checkPos = w.pos.clone();
   let jumpNext = false;
@@ -249,6 +250,7 @@ function runRoute(route) {
 // ------------------------------------------------------------------ the slice
 
 const carrying = (n) => () => game.carried.length >= n;
+const INTO_COLUMN = [-1, 0]; // the sundial pillar's east face
 const lit = (i) => () => game.districts[i].lit;
 
 // Up the market's south face, over the glass roof, onto the ridge by the lantern.
@@ -417,6 +419,14 @@ const ROUTE = [
   expect('Opera House lantern lit', lit(2)),
   wait(6),
   expect("fog wall to Neal's Yard has dissolved", () => !world.fogWalls.nealsyard.collider.enabled),
+  expect('Long Acre into Seven Dials has opened too', () => !world.fogWalls.sdLongAcre.collider.enabled),
+
+  section('Long Acre: out of the Opera House west gate and into Seven Dials'),
+  go(46, -38),
+  go(36, -43),
+  go(30, -52),
+  expect('standing in Seven Dials, straight from the Opera House', () => game.districtAt(w.pos.x, w.pos.z) === 4),
+  go(36, -43),
 
   section("Neal's Yard: down off the Floral Hall and up the Shorts Gardens alley"),
   go(64, -40),
@@ -471,7 +481,56 @@ const ROUTE = [
   chirp(0.3),
   wait(3),
   expect("Neal's Yard lantern lit", lit(3)),
+  wait(6),
+  expect('fog wall to Seven Dials has dissolved', () => !world.fogWalls.sevendials.collider.enabled),
+
+  section('Seven Dials: out of the yard along Monmouth Street'),
+  go(91, -88),
+  go(66, -72),
+  go(49, -72),
+  go(36, -72),
+  go(21, -72),
+  ...sevenDialsRoofs(),
+
+  section('Seven Dials: the sundial pillar (chirp to bring out its ledges)'),
+  go(20, -72),
+  wait(2), // land and settle before walking up the steps
+  go(13.4, -72),
+  go(12.0, -72), // on the steps, just short of the column
+  chirp(),
+  go(11.15, -72, 5.35, INTO_COLUMN),
+  go(11.15, -72, 10.35, INTO_COLUMN),
+  chirp(),
+  go(11.15, -72, 15.35, INTO_COLUMN),
+  go(11.15, -72, 20.35, INTO_COLUMN),
+  chirp(),
+  go(11.15, -72, 24.85, INTO_COLUMN),
+  go(11.2, -72, world.sevenDials.top, INTO_COLUMN),
+  chirp(0.3),
+  wait(3),
+  expect('Seven Dials lantern lit', lit(4)),
+  wait(6),
+  expect('shortcut from Seven Dials into the Piazza has opened', () => !world.fogWalls.sdPiazza.collider.enabled),
 ];
+
+/** Up each Seven Dials wedge building that holds a fragment, chirping on its roof. */
+function sevenDialsRoofs() {
+  const legs = [];
+  const c = world.sevenDials.center;
+  world.sevenDials.ring.forEach((r, i) => {
+    legs.push(
+      section(`Seven Dials: wedge roof ${i + 1} of ${world.sevenDials.ring.length}`),
+      // Via the open circus, so the bot never cuts a street corner.
+      go(c.x + (r.front.x - c.x) * 0.7, c.z + (r.front.z - c.z) * 0.7),
+      go(r.front.x, r.front.z),
+      go(r.roof.x, r.roof.z, r.top),
+      chirp(),
+      wait(0.5),
+      expect(`carrying ${i + 1} Seven Dials fragment(s)`, carrying(i + 1)),
+    );
+  });
+  return legs;
+}
 
 const wall0 = Date.now();
 runRoute(ROUTE);

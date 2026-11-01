@@ -353,6 +353,17 @@ export class AudioSys {
       }
       if (s % 2 === 1) this.noise(t, 0.09, 0.025, 6000, 'highpass', yard);
     }
+
+    // Layer 4 — Seven Dials: a clock ticking the beat (tick, tock) and a music-box
+    // celesta picking out the chord high above.
+    const dials = this.layers.get(4);
+    if (dials) {
+      if (s % 2 === 0) this.noise(t, 0.025, 0.05, s % 4 === 0 ? 5200 : 3400, 'bandpass', dials);
+      const BOX = { 1: 2, 3: 1, 4: 0, 6: 1 };
+      if (s in BOX && !(bar % 4 === 3 && s === 6)) {
+        this.bell(chord[BOX[s]] + 36 - (bar % 2 ? 0 : 12), t, 0.02, 1.4, dials);
+      }
+    }
   }
 
   /** Marimba: a sine bar with its bright 4th-harmonic tick and a quick decay. */

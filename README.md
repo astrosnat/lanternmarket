@@ -29,14 +29,14 @@ npm run playtest # headless bot plays the whole slice (--all for every player st
 - [x] 1. Feel prototype: eased walk, floaty jump, glide, spring camera, gamepad
 - [x] 2. Climbing: grab any surface, scarf stamina, ledges/awnings as rest points, mantle
 - [x] 3. Chirp + colour: ripple, lantern lighting, saturation wave per district
-- [x] 4. Fragments: 5 in the Piazza, 3 at St Paul's, 4 at the Opera House, 5 in Neal's Yard; carry, drop on big falls, deposit to unlock
+- [x] 4. Fragments: 5 in the Piazza, 3 at St Paul's, 4 at the Opera House, 5 in Neal's Yard, 6 in Seven Dials; carry, drop on big falls, deposit to unlock
 - [x] 5. Look pass: rim-lit wanderer model, particles (motes, petals, lantern sparks, dust), composed music layers
 - [~] 6. Comedy pass: trips, hood flops, hiccups done; pigeon friend to do
-- [~] 7. Playtest slice: bot clears it end to end (`tools/playtest.mjs`); human playtest to do; then districts 2–8 (2 Royal Opera House and 3 Neal's Yard done)
+- [~] 7. Playtest slice: bot clears it end to end (`tools/playtest.mjs`); human playtest to do; then districts 2–8 (2 Royal Opera House, 3 Neal's Yard, 4 Seven Dials done)
 
 ## Layout
 
-- `src/world.js` — grey-box Piazza, Market Building, terraces, St Paul's, Royal Opera House (Floral Hall, fly tower, Bow Street), Neal's Yard (painted houses, window-box climb), fog walls, fragment spots
+- `src/world.js` — grey-box Piazza, Market Building, terraces, St Paul's, Royal Opera House (Floral Hall, fly tower, Bow Street), Neal's Yard (painted houses, window-box climb), Seven Dials (seven-street circus, sundial pillar), fog walls, fragment spots
 - `src/wanderer.js` — movement/climb controller and procedural animation
 - `src/scarf.js` — scarf rope; its lit length is the stamina meter
 - `src/particles.js` — dust motes, petals, lantern sparks, footstep and landing puffs
@@ -45,7 +45,7 @@ npm run playtest # headless bot plays the whole slice (--all for every player st
 - `src/game.js` — chirp, fragments, lanterns, colour waves, atmosphere
 - `src/materials.js` — toon materials with the shared "wake" shader patch and rim light
 - `tools/playtest.mjs` — headless playtest bot (real game code, scripted route, blocker report)
-- `src/audio.js` — synthesised chirps, ambience and score (D major pentatonic): Piazza accordion + oom-pah, St Paul's carillon + choir, Opera House strings, Neal's Yard marimba + shaker
+- `src/audio.js` — synthesised chirps, ambience and score (D major pentatonic): Piazza accordion + oom-pah, St Paul's carillon + choir, Opera House strings, Neal's Yard marimba + shaker, Seven Dials clock + celesta
 
 ## Credits
 

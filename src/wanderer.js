@@ -457,8 +457,15 @@ export class Wanderer {
     this.climbVy = vy;
     this.vel.set(0, 0, 0);
 
+    const sx = this.pos.x;
+    const sz = this.pos.z;
     this.moveAxis('x', tx * vl * dt);
     this.moveAxis('z', tz * vl * dt);
+    // Shuffling sideways past the end of a wall: stop at the edge instead of letting go.
+    if (vl !== 0 && !this.probe(0.12) && !this.probe(H * 0.85)) {
+      this.pos.x = sx;
+      this.pos.z = sz;
+    }
     this.grounded = false;
     this.ceilC = null;
     this.moveAxis('y', vy * dt);
