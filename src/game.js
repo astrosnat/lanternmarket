@@ -23,12 +23,12 @@ export const DISTRICTS = [
   },
   {
     // Crimson & rose gold. Opens the way to Neal's Yard once that district exists.
-    name: 'Royal Opera House', hue: '#e0405f', fog: '#efd4d0', maxRadius: 90, unlocks: ['nealsyard'],
+    name: 'Royal Opera House', hue: '#e0405f', fog: '#efd4d0', maxRadius: 90, unlocks: ['shortsGardens'],
     petals: ['#c8243f', '#e8a598', '#f2c4b6', '#b76e79'],
   },
   {
     // Lime, pink & sky blue. Opens the way to Seven Dials once that district exists.
-    name: "Neal's Yard", hue: '#8fe05a', fog: '#e4f1dc', maxRadius: 64, unlocks: ['monmouth'],
+    name: "Neal's Yard", hue: '#8fe05a', fog: '#e4f1dc', maxRadius: 64, unlocks: ['monmouth', 'shortsGardens'],
     petals: ['#9be15d', '#f49ac1', '#8ccbf0', '#fff3a8'],
   },
   {

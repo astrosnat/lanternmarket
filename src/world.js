@@ -938,7 +938,8 @@ export function buildWorld(scene, physics, opts = {}) {
   const fogWalls = {
     stpauls: fogWall(-27, -45, -27, 45),
     opera: fogWall(48, -45, 48, 45),
-    nealsyard: fogWall(48, -45, 118, -45),
+    // Shorts Gardens, between the Opera House plaza and Neal's Yard: lighting either opens it.
+    shortsGardens: fogWall(48, -45, 118, -45),
     north: fogWall(-75, -45, -27, -45),
     sdPiazza: fogWall(-27, -45, 21, -45),
     // Long Acre: from the Piazza's north-east corner (right outside the Opera House's

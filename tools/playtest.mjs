@@ -472,7 +472,7 @@ const ROUTE = [
   wait(3),
   expect('Opera House lantern lit', lit(2)),
   wait(6),
-  expect("fog wall to Neal's Yard has dissolved", () => !world.fogWalls.nealsyard.collider.enabled),
+  expect("Shorts Gardens into Neal's Yard has opened", () => !world.fogWalls.shortsGardens.collider.enabled),
 
   section('Long Acre: out of the Opera House west gate and into Seven Dials'),
   go(46, -38),
@@ -613,7 +613,7 @@ if (SD_POOL) {
   // --scarf 9: arrive with less (e.g. only the Piazza and the Opera House lit).
   const scarfArg = process.argv.indexOf('--scarf');
   if (scarfArg > 0) w.scarfMax = Number(process.argv[scarfArg + 1]);
-  for (const k of ['stpauls', 'opera', 'nealsyard', 'monmouth', 'sdLongAcre']) {
+  for (const k of ['stpauls', 'opera', 'shortsGardens', 'monmouth', 'sdLongAcre']) {
     world.fogWalls[k].collider.enabled = false;
     world.fogWalls[k].mesh.visible = false;
   }
