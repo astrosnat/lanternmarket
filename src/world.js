@@ -112,11 +112,11 @@ export function buildWorld(scene, physics, opts = {}) {
   // sides: dress the two side walls too (for buildings with streets down their sides).
   const building = ({
     x, z, w, d, h, face, back, color, seed = 0, awnings = 2, chimneys = 2, base = 0, surface = 'brick', sign = true,
-    boxes = false, shutters = false, ledges = true, sides = false,
+    boxes = false, shutters = false, ledges = true, sides = false, roof = 'plaster',
   }) => {
     const sills = [];
     block(x, z, w, d, base, h, color, { surface });
-    block(x, z, w + 0.6, d + 0.6, base + h, 0.35, TRIM, { surface: 'plaster' }); // roof cap overhang
+    block(x, z, w + 0.6, d + 0.6, base + h, 0.35, TRIM, { surface: roof }); // roof cap overhang
     const top = base + h + 0.35;
 
     // Helpers for one side of the building.
@@ -210,7 +210,7 @@ export function buildWorld(scene, physics, opts = {}) {
       const p = at(t, top, -depth * (0.35 + 0.1 * i));
       block(p.x, p.z, 1.1, 1.1, top, 1.5 + (seed % 3) * 0.4, '#8b5c4a', { surface: 'brick' });
     }
-    return { top, at, sills, front, side };
+    return { top, at, sills, front, side, x, z, w, d };
   };
 
   // ---------------------------------------------------------- 0: Piazza & Market Building
@@ -838,19 +838,19 @@ export function buildWorld(scene, physics, opts = {}) {
   const DLW = [
     [-97, 14, 12], [-82, 12, 11], [-61, 14, 13], [-45, 14, 10], [-29, 14, 12], [-13, 14, 11], [3, 14, 13], [19, 14, 10],
   ].map(([z, d, h], i) => building({
-    x: 125, z, w: 12, d, h, face: 'e', color: DL_PAINT[i % DL_PAINT.length], seed: i, awnings: 1,
+    x: 125, z, w: 12, d, h, face: 'e', color: DL_PAINT[i % DL_PAINT.length], seed: i, awnings: 1, roof: 'tiles',
   }));
 
   // The theatres, facing the street.
   const theatre = (x, z, w, d, h, color, seed) => building({
-    x, z, w, d, h, face: 'w', color, seed, awnings: 0, chimneys: 0, surface: 'stone', sign: false,
+    x, z, w, d, h, face: 'w', color, seed, awnings: 0, chimneys: 0, surface: 'stone', sign: false, roof: 'tiles',
   });
   const LYCEUM = theatre(157, -80, 30, 40, 14, '#e8dccb', 1); // x 142..172, z -100..-60
   const ROYAL = theatre(156, -24, 28, 36, 15, '#efe4d2', 2); // x 142..170, z -42..-6
   const FORTUNE = theatre(152, 13, 20, 22, 12, '#e2d2bd', 3); // x 142..162, z 2..24
   const ROYAL_FLY = building({
     x: 160, z: -24, w: 18, d: 24, h: 10, face: 'w', color: '#ddd0bd', seed: 4,
-    awnings: 0, chimneys: 0, surface: 'stone', sign: false, base: ROYAL.top,
+    awnings: 0, chimneys: 0, surface: 'stone', sign: false, base: ROYAL.top, roof: 'tiles',
   }); // x 151..169, z -36..-12, on the Theatre Royal's roof
   const FLY_TOP = ROYAL_FLY.top;
 
@@ -940,6 +940,84 @@ export function buildWorld(scene, physics, opts = {}) {
     lightString(at, len, dlZips.length + 3);
     const roofStand = a.clone().addScaledVector(dir, -1.2).setY(t.top);
     dlZips.push({ ...line, idx: physics.ziplines.length - 1, roofStand, front: f.at(tz, 0, 3.6), top: t.top, z });
+  }
+
+
+  // Roof gardens: iron railings round every roof edge (decorative, so they never stop
+  // you pulling up onto a roof), with gaps where fire escapes and light strings arrive;
+  // planters of flowers at the back; potted bay trees on the theatres.
+  const roofGarden = (b, gaps, bays) => {
+    const top = b.top;
+    const hx = b.w / 2 + 0.18;
+    const hz = b.d / 2 + 0.18;
+    const nearGap = (x, z, r) => gaps.some((g) => Math.hypot(g.x - x, g.z - z) < r);
+    const corners = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]];
+    corners.forEach(([ax, az], i) => {
+      const [bx, bz] = corners[(i + 1) % 4];
+      const len = Math.hypot(bx - ax, bz - az);
+      const n = Math.max(2, Math.round(len / 0.75));
+      for (let k = 0; k < n; k++) {
+        const u0 = k / n;
+        const u1 = (k + 1) / n;
+        const px = b.x + ax + (bx - ax) * u0;
+        const pz = b.z + az + (bz - az) * u0;
+        const mx = b.x + ax + (bx - ax) * ((u0 + u1) / 2);
+        const mz = b.z + az + (bz - az) * ((u0 + u1) / 2);
+        if (nearGap(mx, mz, 1.4)) continue;
+        decorBox(px, top, pz, 0.06, 0.92, 0.06, DL_IRON);
+        if (k % 4 === 0) {
+          const g = new THREE.SphereGeometry(0.07, 6, 5);
+          g.translate(px, top + 0.98, pz);
+          addDecor(GOLD, g);
+        }
+        const segX = Math.abs(bx - ax) * (u1 - u0) + 0.06;
+        const segZ = Math.abs(bz - az) * (u1 - u0) + 0.06;
+        decorBox(mx, top + 0.86, mz, segX, 0.05, segZ, DL_IRON);
+        decorBox(mx, top + 0.45, mz, segX, 0.04, segZ, DL_IRON);
+      }
+    });
+    // Planters at the back corners and the middle of the back edge.
+    const n = b.front.normal;
+    const back = V(-n.x, 0, -n.z);
+    const across = V(-back.z, 0, back.x);
+    const reachBack = Math.abs(back.x) ? b.w / 2 - 0.9 : b.d / 2 - 0.9;
+    const reachAcross = Math.abs(across.x) ? b.w / 2 - 1.3 : b.d / 2 - 1.3;
+    for (const a of [-1, 0, 1]) {
+      const cx = b.x + back.x * reachBack + across.x * reachAcross * a;
+      const cz = b.z + back.z * reachBack + across.z * reachAcross * a;
+      if (nearGap(cx, cz, 2.2)) continue;
+      const along = Math.abs(across.x) > 0.5;
+      block(cx, cz, along ? 1.6 : 0.6, along ? 0.6 : 1.6, top, 0.45, '#8a5a3c', { surface: 'plaster' });
+      for (let f = 0; f < 5; f++) {
+        const off = -0.6 + f * 0.3;
+        const g = new THREE.SphereGeometry(0.15, 7, 5);
+        g.translate(cx + (along ? off : 0), top + 0.6, cz + (along ? 0 : off));
+        addDecor(FLOWERS[(f * 2 + Math.round(cx + cz)) % FLOWERS.length], g);
+      }
+    }
+    // Potted bay trees at the front corners of the theatres.
+    if (bays) {
+      for (const a of [-1, 1]) {
+        const reachFront = Math.abs(n.x) ? b.w / 2 - 1.0 : b.d / 2 - 1.0;
+        const cx = b.x + n.x * reachFront + across.x * reachAcross * a;
+        const cz = b.z + n.z * reachFront + across.z * reachAcross * a;
+        if (nearGap(cx, cz, 2.2)) continue;
+        block(cx, cz, 0.6, 0.6, top, 0.5, '#3a3f4a');
+        decorBox(cx, top + 0.5, cz, 0.08, 0.6, 0.08, '#6a4a36');
+        const g = new THREE.SphereGeometry(0.45, 10, 8);
+        g.translate(cx, top + 1.35, cz);
+        addDecor('#4f8f4a', g);
+      }
+    }
+  };
+  {
+    const top = (path) => path[path.length - 1];
+    const poles = (b) => dlZips.filter((z) => Math.abs(z.a.x - b.front.at(0, 0, 0).x) < 1).map((z) => z.a);
+    roofGarden(LYCEUM, [top(ESC.lyceum), ...poles(LYCEUM)], true);
+    roofGarden(ROYAL, [top(ESC.royal), ESC.fly[0], ...poles(ROYAL).filter((p) => Math.abs(p.z - ROYAL.z) < ROYAL.d / 2)], true);
+    roofGarden(FORTUNE, [top(ESC.fortune), ...poles(FORTUNE).filter((p) => Math.abs(p.z - FORTUNE.z) < FORTUNE.d / 2)], true);
+    roofGarden(ROYAL_FLY, [top(ESC.fly)], false);
+    DLW.forEach((b) => roofGarden(b, [], false));
   }
 
   // Poster columns on the pavement: climb up onto the dome.

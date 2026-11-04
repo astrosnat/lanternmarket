@@ -52,8 +52,8 @@ vLmNormal = normalize(mat3(modelMatrix) * lmN);
 // Surface detail, painted in world space so it never stretches: brick or stone
 // coursing, plaster grain, per-block tone, and grime (dark feet, streaks under
 // ledges, shaded undersides). Snapped to a few shades so it reads as painted.
-// LM_SURFACE: 0 none, 1 brick, 2 stone, 3 plaster, 4 glass (see GLASS_FRAGMENT).
-export const SURFACES = { none: 0, brick: 1, stone: 2, plaster: 3, glass: 4 };
+// LM_SURFACE: 0 none, 1 brick, 2 stone, 3 plaster, 4 glass (see GLASS_FRAGMENT), 5 roof tiles.
+export const SURFACES = { none: 0, brick: 1, stone: 2, plaster: 3, glass: 4, tiles: 5 };
 const LEDGE_STEP = '3.2'; // terrace cornices every 3.2 m (see world.js)
 
 const SURFACE_PARS = /* glsl */ `
@@ -133,16 +133,49 @@ float lmSurface(vec3 wp, vec3 n) {
 }
 `;
 
+// Victorian encaustic roof tiles (Drury Lane), on top faces only: cream tiles with a
+// magenta diamond alternate with teal tiles with a gold centre, in thin grout. One of
+// two colourways per roof-sized patch, so neighbouring roofs differ.
+const TILES_PARS = /* glsl */ `
+vec3 lmTiles(vec3 wp, vec3 n, vec3 base) {
+  if (n.y < 0.5) return base * lmSurface(wp, n);
+  vec2 p = wp.xz / 0.7;
+  vec2 cell = floor(p);
+  vec2 f = fract(p) - 0.5;
+  float aa = max(fwidth(p.x), fwidth(p.y)) * 1.5;
+  float far = smoothstep(0.12, 0.35, aa); // fade detail to an average tone in the distance
+  bool alt = lmHash(floor(wp.xz / 11.0) + 7.0) > 0.5;
+  vec3 cream = base;
+  vec3 ink = alt ? vec3(0.42, 0.16, 0.36) : vec3(0.70, 0.18, 0.42);   // plum / magenta
+  vec3 dark = alt ? vec3(0.13, 0.36, 0.38) : vec3(0.16, 0.30, 0.36);  // teal
+  vec3 gold = vec3(0.86, 0.66, 0.26);
+  float checker = mod(cell.x + cell.y, 2.0);
+  float diamond = 1.0 - smoothstep(0.30 - aa, 0.30 + aa, abs(f.x) + abs(f.y));
+  float dot_ = 1.0 - smoothstep(0.14 - aa, 0.14 + aa, length(f));
+  float ring = smoothstep(0.30 - aa, 0.30 + aa, length(f)) * (1.0 - smoothstep(0.36 - aa, 0.36 + aa, length(f)));
+  vec3 a = mix(cream, ink, diamond);                                  // cream tile, magenta diamond
+  vec3 b = mix(mix(dark, gold, dot_), cream, ring * 0.8);             // teal tile, gold centre, cream ring
+  vec3 c = mix(a, b, checker);
+  float grout = 1.0 - smoothstep(0.46 - aa, 0.46, max(abs(f.x), abs(f.y)));
+  c *= mix(0.62, 1.0, grout);
+  vec3 avg = mix(mix(cream, ink, 0.25), mix(dark, gold, 0.12), 0.5) * 0.9;
+  return mix(c, avg, far);
+}
+`;
+
 const SURFACE_FRAGMENT = /* glsl */ `
 #include <color_fragment>
 #if LM_SURFACE > 0 && LM_SURFACE < 4
   diffuseColor.rgb *= lmSurface(vLmWorld, normalize(vLmNormal));
+#elif LM_SURFACE == 5
+  diffuseColor.rgb = lmTiles(vLmWorld, normalize(vLmNormal), diffuseColor.rgb);
 #endif
 `;
 
 const WAKE_FRAGMENT_PARS = /* glsl */ `
 varying vec3 vLmWorld;
 ${SURFACE_PARS}
+${TILES_PARS}
 uniform vec3 uWakeCenter[${MAX_DISTRICTS}];
 uniform float uWakeRadius[${MAX_DISTRICTS}];
 uniform vec3 uWakeHue[${MAX_DISTRICTS}];
