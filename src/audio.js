@@ -372,6 +372,18 @@ export class AudioSys {
         this.bell(chord[BOX[s]] + 36 - (bar % 2 ? 0 : 12), t, 0.02, 1.4, dials);
       }
     }
+
+    // Layer 5 — Drury Lane: a brass section, show-tune style: a trombone walking the
+    // bass and bright chord stabs on the off-beats, with a trumpet call every 4 bars.
+    const brassL = this.layers.get(5);
+    if (brassL) {
+      if (s === 0) this.brass(chord[0] - 12, t, STEP * 3, 0.05, brassL);
+      if (s === 4) this.brass(chord[2] - 12, t, STEP * 3, 0.04, brassL);
+      if (s === 2 || s === 6) for (const m of chord) this.brass(m + 12, t, STEP * 0.7, 0.018, brassL);
+      if (bar % 4 === 3 && (s === 4 || s === 5 || s === 6)) {
+        this.brass([chord[0], chord[1], chord[2] + 12][s - 4] + 24, t, STEP * (s === 6 ? 2.5 : 0.9), 0.03, brassL);
+      }
+    }
   }
 
   /** Marimba: a sine bar with its bright 4th-harmonic tick and a quick decay. */
@@ -379,6 +391,33 @@ export class AudioSys {
     const f = mtof(m);
     this.tone({ freq: f, t, dur: 0.55, gain, attack: 0.003, dest });
     this.tone({ freq: f * 4, t, dur: 0.07, gain: gain * 0.35, attack: 0.002, dest });
+  }
+
+  /** Brass: buzzy saws whose filter opens with each attack, like a lip blowing into the bell. */
+  brass(m, t, dur, gain, dest) {
+    const ctx = this.ctx;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.Q.value = 1.2;
+    f.frequency.setValueAtTime(400, t);
+    f.frequency.linearRampToValueAtTime(2600, t + 0.06);
+    f.frequency.setTargetAtTime(1200, t + 0.06, 0.15);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.04);
+    g.gain.setValueAtTime(gain * 0.8, t + Math.max(0.05, dur - 0.08));
+    g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.04);
+    f.connect(g).connect(dest);
+    const end = t + dur + 0.1;
+    for (const det of [-5, 5]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = mtof(m);
+      o.detune.value = det;
+      o.connect(f);
+      o.start(t);
+      o.stop(end);
+    }
   }
 
   /** Bowed string: detuned saws through a soft filter, slow swell, delayed vibrato. */

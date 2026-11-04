@@ -19,10 +19,12 @@ export const DISTRICT_BOUNDS = [
   [48, -45, 118, 45], // 2 Royal Opera House
   [48, -105, 118, -45], // 3 Neal's Yard
   [-27, -105, 48, -45], // 4 Seven Dials
+  [118, -105, 178, 45], // 5 Drury Lane theatres
 ];
 
 // opts.seed: which random fragments Seven Dials uses (new each game by default).
-// opts.sdAllCandidates: place a fragment on every candidate spot (for the playtest bot).
+// opts.sdAllCandidates / dlAllCandidates: place a fragment on every candidate spot in
+// Seven Dials / Drury Lane (for the playtest bot's reachability check).
 export function buildWorld(scene, physics, opts = {}) {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   let rngState = seed || 1;
@@ -208,7 +210,7 @@ export function buildWorld(scene, physics, opts = {}) {
       const p = at(t, top, -depth * (0.35 + 0.1 * i));
       block(p.x, p.z, 1.1, 1.1, top, 1.5 + (seed % 3) * 0.4, '#8b5c4a', { surface: 'brick' });
     }
-    return { top, at, sills, front };
+    return { top, at, sills, front, side };
   };
 
   // ---------------------------------------------------------- 0: Piazza & Market Building
@@ -415,11 +417,11 @@ export function buildWorld(scene, physics, opts = {}) {
 
   // Bow Street terraces (east side, facing the Opera House).
   const BOW = [
-    building({ x: 112, z: -36, w: 8, d: 14, h: 12, face: 'w', color: '#c9a27e', seed: 0, awnings: 1 }),
-    building({ x: 112, z: -20, w: 8, d: 14, h: 14, face: 'w', color: '#b47c62', seed: 3, awnings: 1 }),
-    building({ x: 112, z: -4, w: 8, d: 14, h: 11, face: 'w', color: '#d8b892', seed: 1, awnings: 1 }),
-    building({ x: 112, z: 12, w: 8, d: 14, h: 13, face: 'w', color: '#a86f58', seed: 4, awnings: 1 }),
-    building({ x: 112, z: 28, w: 8, d: 14, h: 12, face: 'w', color: '#cfa985', seed: 2, awnings: 1 }),
+    building({ x: 112, z: -36, w: 8, d: 14, h: 12, face: 'w', back: 'e', color: '#c9a27e', seed: 0, awnings: 1 }),
+    building({ x: 112, z: -20, w: 8, d: 14, h: 14, face: 'w', back: 'e', color: '#b47c62', seed: 3, awnings: 1 }),
+    building({ x: 112, z: -4, w: 8, d: 14, h: 11, face: 'w', back: 'e', color: '#d8b892', seed: 1, awnings: 1 }),
+    building({ x: 112, z: 12, w: 8, d: 14, h: 13, face: 'w', back: 'e', color: '#a86f58', seed: 4, awnings: 1 }),
+    building({ x: 112, z: 28, w: 8, d: 14, h: 12, face: 'w', back: 'e', color: '#cfa985', seed: 2, awnings: 1 }),
   ];
   // Russell Street terrace (south side, facing the plaza).
   const RUSSELL = [
@@ -479,8 +481,9 @@ export function buildWorld(scene, physics, opts = {}) {
     building({ x: 56, z: -65, w: 12, d: 10, h: 12, face: 'e', back: 'w', color: PAINT[3], seed: 3, awnings: 1, ...painted }),
   ];
   const NYE = [
-    building({ x: 110, z: -82, w: 12, d: 16, h: 14, face: 'w', color: PAINT[2], seed: 4, awnings: 1, ...painted }),
-    building({ x: 110, z: -67, w: 12, d: 14, h: 11, face: 'w', color: PAINT[0], seed: 0, awnings: 1, ...painted }),
+    building({ x: 110, z: -82, w: 12, d: 16, h: 14, face: 'w', back: 'e', color: PAINT[2], seed: 4, awnings: 1, ...painted }),
+    // Shortened to leave Shelton Street (z -74..-70) running east to Drury Lane.
+    building({ x: 110, z: -65, w: 12, d: 10, h: 11, face: 'w', back: 'e', color: PAINT[0], seed: 0, awnings: 1, ...painted }),
   ];
 
   // The signature house: tall, pink, no cornices; only a zig-zag staircase of
@@ -816,6 +819,219 @@ export function buildWorld(scene, physics, opts = {}) {
     }
   }
 
+
+  // ---------------------------------------------------------- 5: Drury Lane theatres
+  // East of the Opera House and Neal's Yard (x 118..178, z -105..45). Drury Lane runs
+  // north-south (x 132..140); theatres line its east side: the Lyceum, the Theatre
+  // Royal (with its fly tower) and the Fortune. Russell Street comes in from the Opera
+  // House (z 35..45), Shelton Street from Neal's Yard (z -74..-70). Signature climb: the
+  // stage-door fire escapes, iron stairs you walk up flight by flight, all the way up the
+  // Theatre Royal's fly tower to the lantern.
+  const DL_STREET = 136;
+  const MAGENTA = '#c8327f';
+  const GOLD = '#f2c14e';
+  const DL_IRON = '#3b3f46';
+  const DL_PAINT = ['#d9c3a5', '#b8826a', '#cfb08a', '#a9765f', '#e0cdb0', '#c49a7c'];
+
+  // West side of Drury Lane: terraces facing the street, with gaps for Shelton Street
+  // and Russell Street.
+  const DLW = [
+    [-97, 14, 12], [-82, 12, 11], [-61, 14, 13], [-45, 14, 10], [-29, 14, 12], [-13, 14, 11], [3, 14, 13], [19, 14, 10],
+  ].map(([z, d, h], i) => building({
+    x: 125, z, w: 12, d, h, face: 'e', color: DL_PAINT[i % DL_PAINT.length], seed: i, awnings: 1,
+  }));
+
+  // The theatres, facing the street.
+  const theatre = (x, z, w, d, h, color, seed) => building({
+    x, z, w, d, h, face: 'w', color, seed, awnings: 0, chimneys: 0, surface: 'stone', sign: false,
+  });
+  const LYCEUM = theatre(157, -80, 30, 40, 14, '#e8dccb', 1); // x 142..172, z -100..-60
+  const ROYAL = theatre(156, -24, 28, 36, 15, '#efe4d2', 2); // x 142..170, z -42..-6
+  const FORTUNE = theatre(152, 13, 20, 22, 12, '#e2d2bd', 3); // x 142..162, z 2..24
+  const ROYAL_FLY = building({
+    x: 160, z: -24, w: 18, d: 24, h: 10, face: 'w', color: '#ddd0bd', seed: 4,
+    awnings: 0, chimneys: 0, surface: 'stone', sign: false, base: ROYAL.top,
+  }); // x 151..169, z -36..-12, on the Theatre Royal's roof
+  const FLY_TOP = ROYAL_FLY.top;
+
+  // Marquees: gold canopies over the theatre doors, edged with bulbs, a name board above.
+  const marquees = [];
+  for (const [t, i] of [[LYCEUM, 0], [ROYAL, 1], [FORTUNE, 2]]) {
+    const f = t.front;
+    const w = f.span * 0.55;
+    f.onFace(0, 4.0, 1.25, w, 0.35, 2.5, GOLD, { surface: 'plaster' });
+    f.decorFace(0, 4.45, 0.06, w * 0.8, 1.1, 0.12, MAGENTA);
+    f.decorFace(0, 0, 0.03, w * 0.6, 3.2, 0.06, '#3a2430'); // doors
+    for (let k = 0; k <= 12; k++) {
+      const p = f.at(-w / 2 + (w * k) / 12, 3.95, 2.5);
+      const g = new THREE.SphereGeometry(0.1, 6, 5);
+      g.translate(p.x, p.y, p.z);
+      addDecor(k % 2 ? GOLD : '#ff9ad0', g, k % 2 ? '#8a6510' : '#7a2050');
+    }
+    marquees.push({ i, f, top: 4.35 });
+  }
+
+  // Stage-door fire escapes: flights of shallow steps (each low enough to walk up)
+  // climbing diagonally along a wall, with a short landing at every floor.
+  const fireEscape = (side, t0, dir, y0, topY) => {
+    const RUN = 0.36;
+    const LAND = 0.8;
+    const OUT = 0.65;
+    const DEPTH = 1.1;
+    const flights = Math.ceil((topY - y0) / 3.2);
+    const riseF = (topY - y0) / flights;
+    const steps = Math.ceil(riseF / 0.31);
+    const rise = riseF / steps;
+    const path = [side.at(t0 - dir * 1.0, y0, OUT)];
+    let t = t0;
+    let y = y0;
+    for (let f = 0; f < flights; f++) {
+      for (let s = 1; s <= steps; s++) {
+        const ty = y + rise * s;
+        const tc = t + dir * RUN * (s - 0.5);
+        side.onFace(tc, ty - 0.12, OUT, RUN, 0.12, DEPTH, DL_IRON, { camera: false });
+        if (s % 2 === 0) side.decorFace(tc, ty, OUT + DEPTH / 2 - 0.03, 0.04, 0.9, 0.04, DL_IRON); // railing post
+        side.decorFace(tc, ty + 0.88, OUT + DEPTH / 2 - 0.03, RUN, 0.05, 0.05, DL_IRON); // handrail
+      }
+      t += dir * RUN * steps;
+      y += riseF;
+      side.onFace(t + (dir * LAND) / 2, y - 0.12, OUT, LAND, 0.12, DEPTH, DL_IRON, { camera: false });
+      path.push(side.at(t + (dir * LAND) / 2, y, OUT));
+      t += dir * LAND;
+    }
+    return path;
+  };
+  // A stage door with its little lamp at the foot of each escape.
+  const stageDoor = (side, t) => {
+    side.decorFace(t, 0, 0.03, 1.1, 2.2, 0.06, '#2c2f36');
+    side.decorFace(t, 2.4, 0.12, 0.3, 0.3, 0.24, '#ffe2a0', '#7a5a1a');
+  };
+  const ESC = {};
+  {
+    const north = ROYAL.side('n'); // on the stage-door alley
+    stageDoor(north, -13.2);
+    ESC.royal = fireEscape(north, -12, 1, 0, ROYAL.top);
+    const flyN = ROYAL_FLY.side('n');
+    ESC.fly = fireEscape(flyN, -8.5, 1, ROYAL.top, FLY_TOP);
+    const south = LYCEUM.side('s'); // the other side of the same alley
+    stageDoor(south, -14.2);
+    ESC.lyceum = fireEscape(south, -13, 1, 0, LYCEUM.top);
+    const fortuneN = FORTUNE.side('n'); // on Catherine Street
+    stageDoor(fortuneN, -9.7);
+    ESC.fortune = fireEscape(fortuneN, -8.5, 1, 0, FORTUNE.top);
+  }
+
+  // Strings of lights across Drury Lane, from the theatre roofs down to the terraces
+  // opposite: catch one at the pole and zip across.
+  const dlZips = [];
+  for (const [t, z] of [[LYCEUM, -92], [LYCEUM, -64], [ROYAL, -30], [ROYAL, -14], [FORTUNE, 8], [FORTUNE, 20]]) {
+    const f = t.front;
+    const tz = z - (f.at(0, 0, 0).z);
+    const a = f.at(tz, t.top + 1.0, -0.5);
+    const b = V(131.15, 5.4, z);
+    const len = a.distanceTo(b);
+    const at = sagCurve(a, b, len * 0.05);
+    const horiz = Math.hypot(a.x - b.x, a.z - b.z);
+    const dir = V(b.x - a.x, 0, b.z - a.z).normalize();
+    const line = { a, b, len, at, release: 1 - 1.3 / horiz, dir };
+    physics.ziplines.push(line);
+    const pole = f.at(tz, t.top, -0.5);
+    decorBox(pole.x, t.top, pole.z, 0.12, 1.15, 0.12, DL_IRON);
+    lightString(at, len, dlZips.length + 3);
+    const roofStand = a.clone().addScaledVector(dir, -1.2).setY(t.top);
+    dlZips.push({ ...line, idx: physics.ziplines.length - 1, roofStand, front: f.at(tz, 0, 3.6), top: t.top, z });
+  }
+
+  // Poster columns on the pavement: climb up onto the dome.
+  const dlColumns = [];
+  for (const z of [-51, -2, 31]) {
+    const x = 139.2;
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.62, 3.0, 16), worldMat('#2f5d3a'));
+    col.position.set(x, 1.5, z);
+    col.castShadow = col.receiveShadow = true;
+    scene.add(col);
+    for (const [y, c] of [[1.0, MAGENTA], [1.9, GOLD]]) {
+      const band = new THREE.CylinderGeometry(0.63, 0.63, 0.7, 16);
+      band.translate(x, y, z);
+      addDecor(c, band);
+    }
+    const dome = new THREE.SphereGeometry(0.66, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    dome.scale(1, 0.5, 1);
+    dome.translate(x, 3.0, z);
+    addDecor('#2f5d3a', dome);
+    physics.addBox(x, 0, z, 1.2, 3.1, 1.2);
+    dlColumns.push({ x, z, top: 3.1 });
+  }
+  [[133, -78], [133, -48], [133, 0], [133, 30]].forEach(([x, z]) => lamp(x, z));
+
+  // Cobbles.
+  {
+    const tile = new THREE.BoxGeometry(1.8, 0.05, 1.8);
+    const spots = [];
+    for (let x = 119; x <= 177; x += 2) for (let z = -104; z <= 44; z += 2) {
+      if (physics.fits(V(x, 0.01, z), 0.9, 0.04)) spots.push([x, z]);
+    }
+    const inst = new THREE.InstancedMesh(tile, worldMat('#ffffff', { surface: 'plaster' }), spots.length);
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    const tones = ['#c9b7b8', '#bfa9ad', '#d3c1c0', '#b79fa6', '#cdb4b2'];
+    spots.forEach(([x, z], i) => {
+      m.makeTranslation(x, 0.025, z);
+      inst.setMatrixAt(i, m);
+      inst.setColorAt(i, c.set(tones[Math.abs(i * 7 + x * 3 + z * 13) % tones.length]));
+    });
+    inst.receiveShadow = true;
+    scene.add(inst);
+  }
+
+  // Fragment pool: theatre and terrace roofs, fire-escape landings, marquees, poster
+  // columns and the strings across the street. Six at random each game.
+  const dlPool = [];
+  for (const [b, tag] of [[LYCEUM, 'lyceum'], [ROYAL, 'royal'], [FORTUNE, 'fortune'], ...DLW.map((b, i) => [b, `w${i}`])]) {
+    const f = b.front;
+    const t = (rng() - 0.5) * f.span * 0.5;
+    dlPool.push({ kind: 'roof', tag, pos: f.at(t, b.top + 0.6, -2.2), front: f.at(t, 0, 3.6), climb: f.at(t, b.top, -2.2) });
+  }
+  for (const [name, path] of Object.entries(ESC)) {
+    if (name === 'fly') continue; // that's the way to the lantern
+    path.slice(1, -1).forEach((p, k) => {
+      dlPool.push({ kind: 'landing', tag: `esc-${name}`, pos: p.clone().setY(p.y + 0.6), path: path.slice(0, k + 2) });
+    });
+  }
+  for (const m of marquees) {
+    const n = m.f.normal;
+    dlPool.push({
+      kind: 'sill', tag: `marquee${m.i}`, pos: m.f.at(0, m.top + 0.6, 2.2),
+      ground: m.f.at(0, 0, 3.8), climb: m.f.at(0, m.top, 2.2), push: [-n.x, -n.z],
+    });
+  }
+  for (const [i, c] of dlColumns.entries()) {
+    dlPool.push({
+      kind: 'sill', tag: `column${i}`, pos: V(c.x - 0.3, c.top + 0.6, c.z),
+      ground: V(c.x - 2.4, 0, c.z), climb: V(c.x - 0.3, c.top, c.z), push: [1, 0],
+    });
+  }
+  for (const zl of dlZips) {
+    const mid = zl.at(0.5, V(0, 0, 0));
+    dlPool.push({
+      kind: 'zip', tag: `zip${zl.z}`, pos: mid.setY(mid.y - 0.42), front: zl.front, climb: zl.roofStand.clone(),
+      line: zl.idx, dir: [zl.dir.x, zl.dir.z],
+    });
+  }
+  const dlChosen = [];
+  {
+    const order = dlPool.map((c) => [rng(), c]).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
+    const kinds = {};
+    const tags = new Set();
+    for (const c of order) {
+      if (dlChosen.length === 6) break;
+      if ((kinds[c.kind] ?? 0) >= 2 || tags.has(c.tag)) continue;
+      kinds[c.kind] = (kinds[c.kind] ?? 0) + 1;
+      tags.add(c.tag);
+      dlChosen.push(c);
+    }
+  }
+
   // ---------------------------------------------------------- corner groves
   // Little round trees filling the empty corners between the terraces and the fog.
   // Every tree is merged into one mesh per colour; canopies are climbable like the
@@ -950,9 +1166,12 @@ export function buildWorld(scene, physics, opts = {}) {
     sdWest: fogWall(-27, -105, -27, -45),
     sdNorth: fogWall(-27, -105, 48, -105),
     nyNorth: fogWall(48, -105, 118, -105),
-    nyEast: fogWall(118, -105, 118, -45),
-    south: fogWall(-75, 45, 118, 45),
-    east: fogWall(118, -45, 118, 45),
+    // Into Drury Lane: Shelton Street from Neal's Yard, Russell Street from the Opera House.
+    sheltonSt: fogWall(118, -105, 118, -45),
+    russellSt: fogWall(118, -45, 118, 45),
+    south: fogWall(-75, 45, 178, 45),
+    dlNorth: fogWall(118, -105, 178, -105),
+    east: fogWall(178, -105, 178, 45),
     west: fogWall(-75, -45, -75, 45),
   };
 
@@ -967,7 +1186,7 @@ export function buildWorld(scene, physics, opts = {}) {
   const p = (b, t, y, out) => b.at(t, y, out);
   return {
     spawn: V(0, 0.72, 15),
-    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0), V(66, 14.6, -26), V(91, SIG_TOP, -96), V(SD_C.x, SD_TOP, SD_C.z)],
+    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0), V(66, 14.6, -26), V(91, SIG_TOP, -96), V(SD_C.x, SD_TOP, SD_C.z), V(160, FLY_TOP, -24)],
     fragmentSpots: [
       [
         V(-12, 9.0, 4), // market glass roof, west end
@@ -995,10 +1214,15 @@ export function buildWorld(scene, physics, opts = {}) {
         V(55, NYW[1].top + 0.6, -67), // west roof by the alley
       ],
       (opts.sdAllCandidates ? sdPool : sdChosen).map((c) => c.pos), // Seven Dials, picked at random
+      (opts.dlAllCandidates ? dlPool : dlChosen).map((c) => c.pos), // Drury Lane, picked at random
     ],
     fogWalls,
     chirpLedges,
     seed,
     sevenDials: { center: SD_C, top: SD_TOP, fragments: opts.sdAllCandidates ? sdPool : sdChosen, pool: sdPool },
+    drury: {
+      street: DL_STREET, top: FLY_TOP, lantern: V(160, FLY_TOP, -24), escapes: ESC,
+      fragments: opts.dlAllCandidates ? dlPool : dlChosen, pool: dlPool,
+    },
   };
 }

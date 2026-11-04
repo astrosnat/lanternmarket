@@ -32,10 +32,15 @@ export const DISTRICTS = [
     petals: ['#9be15d', '#f49ac1', '#8ccbf0', '#fff3a8'],
   },
   {
-    // Teal & copper. Lighting it opens a shortcut back into the Piazza and Monmouth
-    // Street into Neal's Yard; Drury Lane next.
-    name: 'Seven Dials', hue: '#2bb5a8', fog: '#d8ece8', maxRadius: 56, unlocks: ['sdPiazza', 'monmouth'],
+    // Teal & copper. Lighting it opens a shortcut back into the Piazza, Monmouth
+    // Street into Neal's Yard, and the way into Drury Lane (from both sides).
+    name: 'Seven Dials', hue: '#2bb5a8', fog: '#d8ece8', maxRadius: 56, unlocks: ['sdPiazza', 'monmouth', 'sheltonSt', 'russellSt'],
     petals: ['#2bb5a8', '#c87533', '#7fc8b5', '#f2e6cf'],
+  },
+  {
+    // Magenta & gold. Opens the way to the Kingsway rooftops once they exist.
+    name: 'Drury Lane theatres', hue: '#d63a9a', fog: '#f2d6e8', maxRadius: 110, unlocks: [],
+    petals: ['#d63a9a', '#f2c14e', '#ff8fd0', '#fff0b8'],
   },
 ];
 

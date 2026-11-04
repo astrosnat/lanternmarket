@@ -6,6 +6,7 @@ import { toonMat } from './materials.js';
 export const R = 0.24; // half-width of the collision box
 export const H = 0.62; // knee-high
 const STEP = 0.34;
+const CLAMBER = 0.8; // walk into a ledge up to this high and you hop up onto it
 const EPS = 1e-3;
 
 // Ground feel: ~0.4 s to full speed, soft drift on stop.
@@ -365,6 +366,10 @@ export class Wanderer {
     if (wasGrounded && !this.grounded && prevGround && !tripping && wm > 0.1 && this.scarf > 0.15 &&
         Math.hypot(this.vel.x, this.vel.z) < EDGE_GRAB_SPEED && this.grabEdge(prevGround)) return;
 
+    // Clamber: walking into a low ledge (a kerb, or a cornice just above an awning)
+    // hops you up onto it rather than leaving you stuck underneath.
+    if (wasGrounded && this.grounded && !tripping && this.wallC && wm > 0.3 && this.clamber(wx, wz, wm)) return;
+
     // Catch a string of lights on the way past.
     if (!this.grounded && !tripping && this.zipCool <= 0 && this.tryZip()) return;
 
@@ -458,6 +463,29 @@ export class Wanderer {
       }
     }
     return false;
+  }
+
+  /** Hop up onto a ledge we're walking into, if it's low enough and there's room on top. */
+  clamber(wx, wz, wm) {
+    const c = this.wallC;
+    const rise = c.max.y - this.pos.y;
+    if (rise <= STEP || rise > CLAMBER) return false;
+    const into = -(wx * this.wallN.x + wz * this.wallN.z) / wm;
+    if (into < 0.55) return false;
+    const t = _t.copy(this.pos);
+    t.y = c.max.y + EPS;
+    for (const a of ['x', 'z']) {
+      if (!this.wallN[a]) continue;
+      t[a] = this.wallN[a] > 0 ? c.max[a] - R - 0.06 : c.min[a] + R + 0.06;
+    }
+    if (!this.physics.fits(t, R, H)) return false;
+    this.visualOffset.add(this.pos).sub(t);
+    this.pos.copy(t);
+    this.vel.set(0, 0, 0);
+    this.peakY = t.y;
+    this.kick(0.2);
+    this.hooks.onMantle?.();
+    return true;
   }
 
   /** Stepped off a tree's canopy: hang on the trunk just under it, to climb down. */

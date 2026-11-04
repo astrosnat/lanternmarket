@@ -7,6 +7,7 @@
 //   node tools/playtest.mjs --verbose        # every event
 //   node tools/playtest.mjs --seed 7         # which random Seven Dials fragments to play
 //   node tools/playtest.mjs --sd-pool        # check every Seven Dials fragment spot is reachable
+//   node tools/playtest.mjs --dl-pool        # ... and every Drury Lane one
 
 import * as THREE from 'three';
 import { execFileSync } from 'node:child_process';
@@ -66,6 +67,7 @@ const WALK = STYLE === 'careful' ? 0.6 : 1;
 const seedArg = process.argv.indexOf('--seed');
 const SEED = seedArg > 0 ? Number(process.argv[seedArg + 1]) : 1;
 const SD_POOL = process.argv.includes('--sd-pool');
+const DL_POOL = process.argv.includes('--dl-pool');
 let learnedGlide = STYLE === 'runner';
 const DT = 1 / 60;
 const SUB = 2;
@@ -77,7 +79,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog('#8d96a6', 22, 110);
 scene.background = new THREE.Color();
 const physics = new Physics();
-const world = buildWorld(scene, physics, { seed: SEED, sdAllCandidates: SD_POOL });
+const world = buildWorld(scene, physics, { seed: SEED, sdAllCandidates: SD_POOL, dlAllCandidates: DL_POOL });
 const audio = new Proxy({}, { get: () => () => {} });
 const w = new Wanderer(scene, physics);
 w.spawn(world.spawn);
@@ -187,6 +189,8 @@ const expect = (what, check) => ({ kind: 'expect', what, check });
 const zip = (dir) => ({ kind: 'zip', dir });
 // Walk back into the Seven Dials circus along whichever street you're in.
 const toCircus = () => ({ kind: 'toCircus' });
+// Walk back out onto Drury Lane itself (the street), from wherever you are in the district.
+const toStreet = () => ({ kind: 'toStreet' });
 
 function runGo(leg) {
   const target = new THREE.Vector3(leg.x, leg.y ?? 0, leg.z);
@@ -197,7 +201,9 @@ function runGo(leg) {
   let checkPos = w.pos.clone();
   let jumpNext = false;
   let jumps = 0;
-  while (t - start < LEG_TIMEOUT) {
+  // Long walks get longer: a careful walker covers ~2.6 m/s.
+  const limit = LEG_TIMEOUT + Math.hypot(leg.x - w.pos.x, leg.z - w.pos.z) / 2;
+  while (t - start < limit) {
     const d = new THREE.Vector3(target.x - w.pos.x, 0, target.z - w.pos.z);
     const hd = d.length();
     const yOk = leg.y === undefined || (w.pos.y > leg.y - 0.35 && w.grounded);
@@ -209,7 +215,7 @@ function runGo(leg) {
     }
     if (hd > 0.3) pushDir = d.normalize();
     // Close enough to start climbing? (Legs with an explicit push may climb a little way off the target.)
-    const near = hd < (leg.push ? 0.9 : 0.45);
+    const near = hd < (leg.push ? 2.4 : 0.45);
     const wish = near && !yOk ? climbDir.clone() : pushDir.clone().multiplyScalar(Math.min(1, hd / 0.6 + 0.35));
     if (w.state === 'move') wish.multiplyScalar(WALK); // walk speed on the ground; full push on walls
     frame(wish, { jump: jumpNext });
@@ -270,6 +276,13 @@ function runRoute(route) {
     if (leg.kind === 'go') runGo(leg);
     if (leg.kind === 'chirp') runChirp(leg);
     if (leg.kind === 'zip') runZip(leg);
+    if (leg.kind === 'toStreet') {
+      const X = world.drury.street;
+      if (Math.abs(w.pos.x - X) > 2 || w.pos.y > 0.5) {
+        // Off a roof or out of an alley: head straight out across to the street.
+        runGo(go(X, THREE.MathUtils.clamp(w.pos.z, -100, 40)));
+      }
+    }
     if (leg.kind === 'toCircus') {
       const C = world.sevenDials.center;
       const step = (Math.PI * 2) / 7;
@@ -564,7 +577,68 @@ const ROUTE = [
   expect('Seven Dials lantern lit', lit(4)),
   wait(6),
   expect('shortcut from Seven Dials into the Piazza has opened', () => !world.fogWalls.sdPiazza.collider.enabled),
+  expect('Shelton Street into Drury Lane has opened', () => !world.fogWalls.sheltonSt.collider.enabled),
+  expect('Russell Street into Drury Lane has opened', () => !world.fogWalls.russellSt.collider.enabled),
+
+  section('Drury Lane: down the pillar, back through Neal\'s Yard and along Shelton Street'),
+  go(20, -72),
+  wait(2),
+  go(36, -72),
+  go(49, -72),
+  go(66, -72),
+  go(100, -72),
+  go(117, -72),
+  go(world.drury.street, -72),
+  ...druryFragments(),
+
+  section('Drury Lane: up the Theatre Royal fire escapes to the lantern on the fly tower'),
+  toStreet(),
+  go(world.drury.street, world.drury.escapes.royal[0].z), // into the stage-door alley square-on
+  ...escapeLegs(world.drury.escapes.royal),
+  // Across the roof, round to the foot of the fly tower's escape (not under its steps).
+  go(158, -39.5),
+  go(world.drury.escapes.fly[0].x, -39.5),
+  ...escapeLegs(world.drury.escapes.fly),
+  go(world.drury.lantern.x + 1.3, world.drury.lantern.z, world.drury.top),
+  chirp(0.3),
+  wait(3),
+  expect('Drury Lane lantern lit', lit(5)),
 ];
+
+/** Walk up a fire escape: to the foot of the stairs, then landing by landing. */
+function escapeLegs(path) {
+  return [go(path[0].x, path[0].z), ...path.slice(1).map((p) => go(p.x, p.z, p.y))];
+}
+
+/** The legs to fetch one Drury Lane fragment: out along the street, then to the spot. */
+function druryLegs(c) {
+  const X = world.drury.street;
+  const via = (p) => [go(X, THREE.MathUtils.clamp(p.z, -100, 40))];
+  switch (c.kind) {
+    case 'roof':
+      return [...via(c.front), go(c.front.x, c.front.z), go(c.climb.x, c.climb.z, c.climb.y), chirp()];
+    case 'sill':
+      return [...via(c.ground), go(c.ground.x, c.ground.z), go(c.climb.x, c.climb.z, c.climb.y, c.push), chirp()];
+    case 'landing':
+      return [...via(c.path[0]), ...escapeLegs(c.path), chirp()];
+    case 'zip':
+      return [...via(c.front), go(c.front.x, c.front.z), go(c.climb.x, c.climb.z, c.climb.y), chirp(), zip(c.dir)];
+    default:
+      throw new Error(`unknown spot ${c.kind}`);
+  }
+}
+
+/** All six of this game's Drury Lane fragments, from north to south. */
+function druryFragments() {
+  const order = [...world.drury.fragments].sort((p, q) => p.pos.z - q.pos.z);
+  return order.flatMap((c, i) => [
+    section(`Drury Lane: fragment ${i + 1} of ${order.length} (${c.kind})`),
+    toStreet(),
+    ...druryLegs(c),
+    wait(0.5),
+    expect(`carrying ${i + 1} Drury Lane fragment(s)`, carrying(i + 1)),
+  ]);
+}
 
 /** The legs to fetch one Seven Dials fragment, whatever kind of spot it's on. */
 function sevenDialsLegs(c) {
@@ -607,25 +681,28 @@ function sevenDialsFragments() {
 }
 
 const wall0 = Date.now();
-if (SD_POOL) {
-  // Light the four earlier districts and open their walls, then try every candidate spot.
-  for (const i of [0, 1, 2, 3]) game.lightDistrict(game.districts[i]);
+if (SD_POOL || DL_POOL) {
+  const D = SD_POOL ? 4 : 5;
+  const data = SD_POOL ? world.sevenDials : world.drury;
+  const legsFor = SD_POOL ? sevenDialsLegs : druryLegs;
+  // Light the earlier districts and open their walls, then try every candidate spot.
+  for (let i = 0; i < D; i++) game.lightDistrict(game.districts[i]);
   // --scarf 9: arrive with less (e.g. only the Piazza and the Opera House lit).
   const scarfArg = process.argv.indexOf('--scarf');
   if (scarfArg > 0) w.scarfMax = Number(process.argv[scarfArg + 1]);
-  for (const k of ['stpauls', 'opera', 'shortsGardens', 'monmouth', 'sdLongAcre']) {
+  for (const k of ['stpauls', 'opera', 'shortsGardens', 'monmouth', 'sdLongAcre', 'sheltonSt', 'russellSt']) {
     world.fogWalls[k].collider.enabled = false;
     world.fogWalls[k].mesh.visible = false;
   }
   const C = world.sevenDials.center;
-  const frags = game.fragments.filter((f) => f.district === 4);
+  const frags = game.fragments.filter((f) => f.district === D);
   const res = {};
   const fails = [];
   const onlyArg = process.argv.indexOf('--only');
   const only = onlyArg > 0 ? process.argv[onlyArg + 1] : null; // e.g. --only tree
   const nearArg = process.argv.indexOf('--near');
   const near = nearArg > 0 ? process.argv[nearArg + 1].split(',').map(Number) : null; // e.g. --near 27.4,-56.5
-  world.sevenDials.fragments.forEach((c, i) => {
+  data.fragments.forEach((c, i) => {
     if (only && c.kind !== only) return;
     if (near && Math.hypot(c.pos.x - near[0], c.pos.z - near[1]) > 0.3) return;
     // Only the spot under test is live; the others are out of play so they can't be scooped up.
@@ -634,11 +711,15 @@ if (SD_POOL) {
       f.group.visible = j === i;
       f.pos.copy(f.home);
     });
-    const d = new THREE.Vector3(c.pos.x - C.x, 0, c.pos.z - C.z).normalize();
-    w.spawn(new THREE.Vector3(C.x + d.x * 7.5, 0.01, C.z + d.z * 7.5));
+    if (SD_POOL) {
+      const d = new THREE.Vector3(c.pos.x - C.x, 0, c.pos.z - C.z).normalize();
+      w.spawn(new THREE.Vector3(C.x + d.x * 7.5, 0.01, C.z + d.z * 7.5));
+    } else {
+      w.spawn(new THREE.Vector3(world.drury.street, 0.01, THREE.MathUtils.clamp(c.pos.z, -100, 40)));
+    }
     w.scarf = w.scarfMax;
     const tp = stats.teleports;
-    runRoute(sevenDialsLegs(c));
+    runRoute(legsFor(c));
     for (let j = 0; j < 30; j++) frame(ZERO);
     const ok = frags[i].state === 'carried' && stats.teleports === tp;
     res[c.kind] ??= { ok: 0, n: 0 };
@@ -646,7 +727,7 @@ if (SD_POOL) {
     if (ok) res[c.kind].ok++;
     else fails.push(`${c.kind} ${c.tag} at ${fmt(c.pos)}`);
   });
-  console.log(`\nSeven Dials fragment spots reachable (scarf ${w.scarfMax}):`);
+  console.log(`\n${SD_POOL ? 'Seven Dials' : 'Drury Lane'} fragment spots reachable (scarf ${w.scarfMax}):`);
   for (const [k, r] of Object.entries(res)) console.log(`  ${k.padEnd(5)} ${r.ok}/${r.n}`);
   if (fails.length) console.log(`Unreachable:\n  ${fails.join('\n  ')}`);
   process.exit(fails.length ? 1 : 0);
