@@ -25,6 +25,8 @@ npm run playtest -- --sd-pool  # check every random Seven Dials fragment spot is
 | Climb | Walk into a wall | Push into a wall |
 | Pause | Esc / P | Start |
 
+Debug shortcuts (`npm run dev` only, never in the built game): **1–6** teleport to a district (Piazza, St Paul's, Opera House, Neal's Yard, Seven Dials, Drury Lane), **Shift + 1–6** lights that district, **0** opens every fog wall between districts.
+
 ## Status (build plan)
 
 - [x] 1. Feel prototype: eased walk, floaty jump, glide, spring camera, gamepad

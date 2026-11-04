@@ -873,7 +873,10 @@ export function buildWorld(scene, physics, opts = {}) {
 
   // Stage-door fire escapes: flights of shallow steps (each low enough to walk up)
   // climbing diagonally along a wall, with a short landing at every floor.
-  const fireEscape = (side, t0, dir, y0, topY) => {
+  const fireEscape = (side, t0, dir, y0, roofY) => {
+    // Finish just above the roof, so the top landing never shares a plane with the
+    // roof's overhanging edge (that z-fights); you step down 2 cm onto the roof.
+    const topY = roofY + 0.02;
     const RUN = 0.36;
     const LAND = 0.8;
     const OUT = 0.65;
@@ -987,6 +990,8 @@ export function buildWorld(scene, physics, opts = {}) {
       const cz = b.z + back.z * reachBack + across.z * reachAcross * a;
       if (nearGap(cx, cz, 2.2)) continue;
       const along = Math.abs(across.x) > 0.5;
+      // Only where the roof is clear (not inside the fly tower, say).
+      if (!physics.fits(V(cx, top + 0.01, cz), along ? 0.85 : 0.35, 0.6)) continue;
       block(cx, cz, along ? 1.6 : 0.6, along ? 0.6 : 1.6, top, 0.45, '#8a5a3c', { surface: 'plaster' });
       for (let f = 0; f < 5; f++) {
         const off = -0.6 + f * 0.3;
@@ -1001,7 +1006,7 @@ export function buildWorld(scene, physics, opts = {}) {
         const reachFront = Math.abs(n.x) ? b.w / 2 - 1.0 : b.d / 2 - 1.0;
         const cx = b.x + n.x * reachFront + across.x * reachAcross * a;
         const cz = b.z + n.z * reachFront + across.z * reachAcross * a;
-        if (nearGap(cx, cz, 2.2)) continue;
+        if (nearGap(cx, cz, 2.2) || !physics.fits(V(cx, top + 0.01, cz), 0.35, 0.6)) continue;
         block(cx, cz, 0.6, 0.6, top, 0.5, '#3a3f4a');
         decorBox(cx, top + 0.5, cz, 0.08, 0.6, 0.08, '#6a4a36');
         const g = new THREE.SphereGeometry(0.45, 10, 8);

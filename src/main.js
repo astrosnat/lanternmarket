@@ -164,3 +164,43 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 if (import.meta.env.DEV) window.__lm = { wanderer, game, follow, physics, scene, camera, sky };
+
+// ------------------------------------------------------------ debug shortcuts (dev server only)
+//   1-6          teleport to a district
+//   Shift + 1-6  light that district (opens the fog walls it unlocks)
+//   0            open every fog wall between districts, without lighting anything
+if (import.meta.env.DEV) {
+  const SPOTS = [
+    [2.5, 15], // 1 Piazza (beside the flower pot)
+    [-29.5, 0], // 2 St Paul's (under the portico, facing the Piazza)
+    [62, -2], // 3 Royal Opera House (the plaza)
+    [80, -75], // 4 Neal's Yard (the yard)
+    [24, -72], // 5 Seven Dials (by the circus)
+    [136, -20], // 6 Drury Lane (the street)
+  ];
+  const openWall = (name) => {
+    const wall = world.fogWalls[name];
+    wall.collider.enabled = false;
+    wall.mesh.visible = false;
+  };
+  addEventListener('keydown', (e) => {
+    if (e.code === 'Digit0') {
+      for (const name of game.wallOpeners.keys()) openWall(name);
+      console.log('[debug] opened every fog wall between districts');
+      return;
+    }
+    const i = /^Digit([1-6])$/.exec(e.code)?.[1] - 1;
+    if (!(i >= 0)) return;
+    const d = game.districts[i];
+    if (e.shiftKey) {
+      if (!d.lit) game.lightDistrict(d);
+      console.log(`[debug] lit ${d.name}`);
+      return;
+    }
+    const [x, z] = SPOTS[i];
+    wanderer.spawn(new THREE.Vector3(x, 0.01, z));
+    wanderer.vel.set(0, 0, 0);
+    follow.snap(wanderer);
+    console.log(`[debug] teleported to ${d.name}`);
+  });
+}
