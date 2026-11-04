@@ -5,6 +5,8 @@
 //   node tools/playtest.mjs --style careful  # runner | careful | novice | stubborn
 //   node tools/playtest.mjs --all            # every style, side by side
 //   node tools/playtest.mjs --verbose        # every event
+//   node tools/playtest.mjs --seed 7         # which random Seven Dials fragments to play
+//   node tools/playtest.mjs --sd-pool        # check every Seven Dials fragment spot is reachable
 
 import * as THREE from 'three';
 import { execFileSync } from 'node:child_process';
@@ -24,7 +26,9 @@ if (process.argv.includes('--all')) {
   for (const style of Object.keys(STYLES)) {
     let out;
     try {
-      out = execFileSync(process.execPath, [self, '--style', style, '--json'], { encoding: 'utf8' });
+      const seedIdx = process.argv.indexOf('--seed');
+      const extra = seedIdx > 0 ? ['--seed', process.argv[seedIdx + 1]] : [];
+      out = execFileSync(process.execPath, [self, '--style', style, '--json', ...extra], { encoding: 'utf8' });
     } catch (e) {
       out = e.stdout;
     }
@@ -59,6 +63,9 @@ const styleArg = process.argv.indexOf('--style');
 const STYLE = styleArg > 0 ? process.argv[styleArg + 1] : 'runner';
 if (!STYLES[STYLE]) throw new Error(`unknown style ${STYLE}; try ${Object.keys(STYLES).join(', ')}`);
 const WALK = STYLE === 'careful' ? 0.6 : 1;
+const seedArg = process.argv.indexOf('--seed');
+const SEED = seedArg > 0 ? Number(process.argv[seedArg + 1]) : 1;
+const SD_POOL = process.argv.includes('--sd-pool');
 let learnedGlide = STYLE === 'runner';
 const DT = 1 / 60;
 const SUB = 2;
@@ -70,7 +77,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog('#8d96a6', 22, 110);
 scene.background = new THREE.Color();
 const physics = new Physics();
-const world = buildWorld(scene, physics);
+const world = buildWorld(scene, physics, { seed: SEED, sdAllCandidates: SD_POOL });
 const audio = new Proxy({}, { get: () => () => {} });
 const w = new Wanderer(scene, physics);
 w.spawn(world.spawn);
@@ -176,6 +183,10 @@ const chirp = (hold = 1.2) => ({ kind: 'chirp', hold });
 const wait = (sec) => ({ kind: 'wait', sec });
 const section = (name) => ({ kind: 'section', name });
 const expect = (what, check) => ({ kind: 'expect', what, check });
+// Jump off the roof along a string of lights and ride it down.
+const zip = (dir) => ({ kind: 'zip', dir });
+// Walk back into the Seven Dials circus along whichever street you're in.
+const toCircus = () => ({ kind: 'toCircus' });
 
 function runGo(leg) {
   const target = new THREE.Vector3(leg.x, leg.y ?? 0, leg.z);
@@ -190,12 +201,16 @@ function runGo(leg) {
     const d = new THREE.Vector3(target.x - w.pos.x, 0, target.z - w.pos.z);
     const hd = d.length();
     const yOk = leg.y === undefined || (w.pos.y > leg.y - 0.35 && w.grounded);
-    if (hd < 0.45 && yOk) {
+    // A plain "go here" isn't done while still gliding overhead: land first.
+    const settled = leg.y !== undefined || w.grounded || w.state !== 'move';
+    if (hd < 0.45 && yOk && settled) {
       for (let i = 0; i < 20; i++) frame(ZERO); // settle
       return true;
     }
     if (hd > 0.3) pushDir = d.normalize();
-    const wish = hd < 0.45 && !yOk ? climbDir.clone() : pushDir.clone().multiplyScalar(Math.min(1, hd / 0.6 + 0.35));
+    // Close enough to start climbing? (Legs with an explicit push may climb a little way off the target.)
+    const near = hd < (leg.push ? 0.9 : 0.45);
+    const wish = near && !yOk ? climbDir.clone() : pushDir.clone().multiplyScalar(Math.min(1, hd / 0.6 + 0.35));
     if (w.state === 'move') wish.multiplyScalar(WALK); // walk speed on the ground; full push on walls
     frame(wish, { jump: jumpNext });
     jumpNext = false;
@@ -204,7 +219,7 @@ function runGo(leg) {
       if (moved < 0.25 && w.state !== 'trip') {
         jumpNext = true;
         jumps++;
-        if (jumps === 1 || jumps % 3 === 0) log('stuck', `no progress at ${fmt(w.pos)} (state ${w.state}, scarf ${w.scarf.toFixed(1)}) → jump`);
+        if (jumps === 1 || jumps % 3 === 0) log('stuck', `no progress at ${fmt(w.pos)} (state ${w.state}, scarf ${w.scarf.toFixed(1)}) → jump${process.env.DBG ? ` wish=${fmt(wish)} grounded=${w.grounded} ground=${w.groundC ? fmt(w.groundC.min) + "→" + fmt(w.groundC.max) : "-"} wall=${w.wallC ? fmt(w.wallC.min) : "-"}` : ""}`);
       }
       checkT = t;
       checkPos.copy(w.pos);
@@ -217,6 +232,22 @@ function runGo(leg) {
   w.state = 'move';
   for (let i = 0; i < 30; i++) frame(ZERO);
   return false;
+}
+
+function runZip(leg) {
+  const wish = new THREE.Vector3(leg.dir[0], 0, leg.dir[1]);
+  let rode = false;
+  // Back up a step, then run at the pole and jump, like a player would.
+  for (let i = 0; i < 20; i++) frame(wish.clone().negate().multiplyScalar(0.5));
+  for (let i = 0; i < 60 * 15; i++) {
+    frame(rode ? ZERO : wish, { jump: i === 14 });
+    if (w.state === 'zip') rode = true;
+    if (rode && w.state !== 'zip' && w.grounded) {
+      log('zip', `rode a string of lights down to ${fmt(w.pos)}`);
+      return;
+    }
+  }
+  log('NOTE', `didn't catch the string from ${fmt(w.pos)}`);
 }
 
 function runChirp(leg) {
@@ -238,6 +269,17 @@ function runRoute(route) {
     if (leg.kind === 'section') { log('SECTION', leg.name); continue; }
     if (leg.kind === 'go') runGo(leg);
     if (leg.kind === 'chirp') runChirp(leg);
+    if (leg.kind === 'zip') runZip(leg);
+    if (leg.kind === 'toCircus') {
+      const C = world.sevenDials.center;
+      const step = (Math.PI * 2) / 7;
+      const th = Math.round(Math.atan2(w.pos.z - C.z, w.pos.x - C.x) / step) * step;
+      const r = Math.hypot(w.pos.x - C.x, w.pos.z - C.z);
+      if (r > 9) {
+        runGo(go(C.x + Math.cos(th) * Math.min(r, 30), C.z + Math.sin(th) * Math.min(r, 30)));
+        runGo(go(C.x + Math.cos(th) * 7.5, C.z + Math.sin(th) * 7.5));
+      }
+    }
     if (leg.kind === 'wait') for (let i = 0; i < leg.sec / DT; i++) frame(ZERO);
     if (leg.kind === 'expect') {
       const ok = leg.check();
@@ -319,6 +361,18 @@ const ROUTE = [
   wait(6),
   expect("fog wall to St Paul's has dissolved", () => !world.fogWalls.stpauls.collider.enabled),
   expect('fog wall to the Opera House has dissolved too', () => !world.fogWalls.opera.collider.enabled),
+  expect('Long Acre into Seven Dials has opened too', () => !world.fogWalls.sdLongAcre.collider.enabled),
+
+  section('Long Acre: from the Piazza straight into Seven Dials, and back'),
+  go(0, -10),
+  go(28, -27),
+  go(36, -38),
+  go(36, -43),
+  go(30, -52),
+  expect('standing in Seven Dials, straight from the Piazza', () => game.districtAt(w.pos.x, w.pos.z) === 4),
+  go(36, -43),
+  go(28, -27),
+  go(0, -10),
 
   section("St Paul's: up the portico"),
   go(-10, 0, 9.8),
@@ -419,7 +473,6 @@ const ROUTE = [
   expect('Opera House lantern lit', lit(2)),
   wait(6),
   expect("fog wall to Neal's Yard has dissolved", () => !world.fogWalls.nealsyard.collider.enabled),
-  expect('Long Acre into Seven Dials has opened too', () => !world.fogWalls.sdLongAcre.collider.enabled),
 
   section('Long Acre: out of the Opera House west gate and into Seven Dials'),
   go(46, -38),
@@ -482,7 +535,7 @@ const ROUTE = [
   wait(3),
   expect("Neal's Yard lantern lit", lit(3)),
   wait(6),
-  expect('fog wall to Seven Dials has dissolved', () => !world.fogWalls.sevendials.collider.enabled),
+  expect('Monmouth Street into Seven Dials has opened', () => !world.fogWalls.monmouth.collider.enabled),
 
   section('Seven Dials: out of the yard along Monmouth Street'),
   go(91, -88),
@@ -490,7 +543,7 @@ const ROUTE = [
   go(49, -72),
   go(36, -72),
   go(21, -72),
-  ...sevenDialsRoofs(),
+  ...sevenDialsFragments(),
 
   section('Seven Dials: the sundial pillar (chirp to bring out its ledges)'),
   go(20, -72),
@@ -513,26 +566,91 @@ const ROUTE = [
   expect('shortcut from Seven Dials into the Piazza has opened', () => !world.fogWalls.sdPiazza.collider.enabled),
 ];
 
-/** Up each Seven Dials wedge building that holds a fragment, chirping on its roof. */
-function sevenDialsRoofs() {
-  const legs = [];
-  const c = world.sevenDials.center;
-  world.sevenDials.ring.forEach((r, i) => {
-    legs.push(
-      section(`Seven Dials: wedge roof ${i + 1} of ${world.sevenDials.ring.length}`),
-      // Via the open circus, so the bot never cuts a street corner.
-      go(c.x + (r.front.x - c.x) * 0.7, c.z + (r.front.z - c.z) * 0.7),
-      go(r.front.x, r.front.z),
-      go(r.roof.x, r.roof.z, r.top),
-      chirp(),
-      wait(0.5),
-      expect(`carrying ${i + 1} Seven Dials fragment(s)`, carrying(i + 1)),
-    );
-  });
-  return legs;
+/** The legs to fetch one Seven Dials fragment, whatever kind of spot it's on. */
+function sevenDialsLegs(c) {
+  const C = world.sevenDials.center;
+  // Out of the circus along the nearest of the seven streets, as far as the spot,
+  // so the bot never cuts across a building.
+  const via = (p) => {
+    const step = (Math.PI * 2) / 7;
+    const th = Math.round(Math.atan2(p.z - C.z, p.x - C.x) / step) * step;
+    const R = Math.min(30, Math.hypot(p.x - C.x, p.z - C.z));
+    return [go(C.x + Math.cos(th) * 7.5, C.z + Math.sin(th) * 7.5), go(C.x + Math.cos(th) * R, C.z + Math.sin(th) * R)];
+  };
+  switch (c.kind) {
+    case 'roof':
+      return [...via(c.front), go(c.front.x, c.front.z), go(c.climb.x, c.climb.z, c.climb.y), chirp()];
+    case 'sill':
+      return [...via(c.ground), go(c.ground.x, c.ground.z), go(c.climb.x, c.climb.z, c.climb.y, c.push), chirp()];
+    case 'tree':
+      return [...via(c.ground), go(c.ground.x, c.ground.z), go(c.climb.x, c.climb.z, c.climb.y, c.push),
+        go(c.top.x, c.top.z, c.top.y), chirp()];
+    case 'zip':
+      return [...via(c.front), go(c.front.x, c.front.z), go(c.climb.x, c.climb.z, c.climb.y), chirp(), zip(c.dir)];
+    default:
+      throw new Error(`unknown spot ${c.kind}`);
+  }
+}
+
+/** All six of this game's Seven Dials fragments, in order round the circus. */
+function sevenDialsFragments() {
+  const C = world.sevenDials.center;
+  const ang = (c) => Math.atan2(c.pos.z - C.z, c.pos.x - C.x);
+  const order = [...world.sevenDials.fragments].sort((p, q) => ang(p) - ang(q));
+  return order.flatMap((c, i) => [
+    section(`Seven Dials: fragment ${i + 1} of ${order.length} (${c.kind})`),
+    toCircus(),
+    ...sevenDialsLegs(c),
+    wait(0.5),
+    expect(`carrying ${i + 1} Seven Dials fragment(s)`, carrying(i + 1)),
+  ]);
 }
 
 const wall0 = Date.now();
+if (SD_POOL) {
+  // Light the four earlier districts and open their walls, then try every candidate spot.
+  for (const i of [0, 1, 2, 3]) game.lightDistrict(game.districts[i]);
+  // --scarf 9: arrive with less (e.g. only the Piazza and the Opera House lit).
+  const scarfArg = process.argv.indexOf('--scarf');
+  if (scarfArg > 0) w.scarfMax = Number(process.argv[scarfArg + 1]);
+  for (const k of ['stpauls', 'opera', 'nealsyard', 'monmouth', 'sdLongAcre']) {
+    world.fogWalls[k].collider.enabled = false;
+    world.fogWalls[k].mesh.visible = false;
+  }
+  const C = world.sevenDials.center;
+  const frags = game.fragments.filter((f) => f.district === 4);
+  const res = {};
+  const fails = [];
+  const onlyArg = process.argv.indexOf('--only');
+  const only = onlyArg > 0 ? process.argv[onlyArg + 1] : null; // e.g. --only tree
+  const nearArg = process.argv.indexOf('--near');
+  const near = nearArg > 0 ? process.argv[nearArg + 1].split(',').map(Number) : null; // e.g. --near 27.4,-56.5
+  world.sevenDials.fragments.forEach((c, i) => {
+    if (only && c.kind !== only) return;
+    if (near && Math.hypot(c.pos.x - near[0], c.pos.z - near[1]) > 0.3) return;
+    // Only the spot under test is live; the others are out of play so they can't be scooped up.
+    frags.forEach((f, j) => {
+      f.state = j === i ? 'sleep' : 'deposited';
+      f.group.visible = j === i;
+      f.pos.copy(f.home);
+    });
+    const d = new THREE.Vector3(c.pos.x - C.x, 0, c.pos.z - C.z).normalize();
+    w.spawn(new THREE.Vector3(C.x + d.x * 7.5, 0.01, C.z + d.z * 7.5));
+    w.scarf = w.scarfMax;
+    const tp = stats.teleports;
+    runRoute(sevenDialsLegs(c));
+    for (let j = 0; j < 30; j++) frame(ZERO);
+    const ok = frags[i].state === 'carried' && stats.teleports === tp;
+    res[c.kind] ??= { ok: 0, n: 0 };
+    res[c.kind].n++;
+    if (ok) res[c.kind].ok++;
+    else fails.push(`${c.kind} ${c.tag} at ${fmt(c.pos)}`);
+  });
+  console.log(`\nSeven Dials fragment spots reachable (scarf ${w.scarfMax}):`);
+  for (const [k, r] of Object.entries(res)) console.log(`  ${k.padEnd(5)} ${r.ok}/${r.n}`);
+  if (fails.length) console.log(`Unreachable:\n  ${fails.join('\n  ')}`);
+  process.exit(fails.length ? 1 : 0);
+}
 runRoute(ROUTE);
 
 const blocked = events.filter((e) => e.kind === 'BLOCKED');

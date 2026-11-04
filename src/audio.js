@@ -211,6 +211,14 @@ export class AudioSys {
     [0, 2, 4].forEach((k, j) => this.bell(SCALE[12 + k], t + j * 0.06, 0.04, 0.7));
   }
 
+  /** Catching a string of lights: a soft whirr and a rising sparkle. */
+  zip() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.noise(t, 0.9, 0.035, 1400, 'bandpass');
+    [0, 1, 2].forEach((k, j) => this.bell(SCALE[12 + k * 2], t + j * 0.07, 0.025, 0.8));
+  }
+
   /** A lantern pointing out the fragments still missing: one soft, distant note each. */
   hint(n) {
     if (!this.ctx) return;

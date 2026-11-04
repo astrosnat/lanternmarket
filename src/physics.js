@@ -17,6 +17,8 @@ const AXES = ['x', 'y', 'z'];
 export class Physics {
   constructor() {
     this.colliders = [];
+    // Light strings you can zip down: { a (high end), b, len, at(t, out), release }.
+    this.ziplines = [];
   }
 
   addBox(cx, y0, cz, w, h, d, opts) {

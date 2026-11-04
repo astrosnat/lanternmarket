@@ -36,6 +36,13 @@ const SCARF_GLIDE = 0.45;
 const SCARF_CLIMB_IDLE = 0.22;
 const SCARF_CLIMB_MOVE = 0.9;
 
+// Ziplines (Seven Dials' strings of lights): catch one in the air, slide down it.
+const ZIP_REACH = 0.9; // how close your raised hood has to pass to catch the string
+const ZIP_SPEED = 8;
+const ZIP_HANG = H + 0.12; // the string sits this far above your feet while you ride
+const _zipA = new THREE.Vector3();
+const _zipB = new THREE.Vector3();
+
 export const BIG_FALL = 6.5;
 
 // Walking (not running) off a drop deeper than this grabs the edge to climb down.
@@ -96,6 +103,10 @@ export class Wanderer {
     this.idleT = 0;
     this.lastWish = 0;
     this.blinkT = 3;
+    this.zip = null;
+    this.zipT = 0;
+    this.zipV = 0;
+    this.zipCool = 0;
 
     this.hooks = {};
     this.buildModel(scene);
@@ -252,9 +263,11 @@ export class Wanderer {
     if (inp.jumpPressed) this.jumpBuf = BUFFER;
     else this.jumpBuf -= dt;
     this.climbLock -= dt;
+    this.zipCool -= dt;
     this.hicT = Math.max(0, this.hicT - dt);
 
     if (this.state === 'climb') this.updateClimb(dt, wx, wz);
+    else if (this.state === 'zip') this.updateZip(dt);
     else this.updateMove(dt, inp, wx, wz, wm);
 
     if (this.pos.y < -30) this.spawn(this.lastLedge);
@@ -352,6 +365,9 @@ export class Wanderer {
     if (wasGrounded && !this.grounded && prevGround && !tripping && wm > 0.1 && this.scarf > 0.15 &&
         Math.hypot(this.vel.x, this.vel.z) < EDGE_GRAB_SPEED && this.grabEdge(prevGround)) return;
 
+    // Catch a string of lights on the way past.
+    if (!this.grounded && !tripping && this.zipCool <= 0 && this.tryZip()) return;
+
     // Auto-grab: walk into any climbable surface.
     if (!tripping && this.wallC && this.wallC.climbable && this.climbLock <= 0 && this.scarf > 0.15 && wm > 0.3) {
       const into = -(wx * this.wallN.x + wz * this.wallN.z) / wm;
@@ -369,6 +385,7 @@ export class Wanderer {
 
   /** Hang off the side of `c` we just stepped off, on the wall beneath its edge. */
   grabEdge(c) {
+    if (c.trunk) return this.grabTrunk(c.trunk, c);
     const p = this.pos;
     const ox = Math.max(p.x - R - c.max.x, c.min.x - p.x - R);
     const oz = Math.max(p.z - R - c.max.z, c.min.z - p.z - R);
@@ -388,7 +405,7 @@ export class Wanderer {
       t[a] = edge - s * o;
       wall = this.physics.solidAt(t.x, top - 1.0, t.z);
     }
-    if (!wall || !wall.climbable) return false;
+    if (!wall || !wall.climbable) return this.grabSideWall(c);
     t[a] = (s > 0 ? wall.max[a] : wall.min[a]) + s * (R + EPS);
     // Hang as high as fits (just under any overhang).
     let fits = false;
@@ -406,6 +423,135 @@ export class Wanderer {
     this.peakY = p.y;
     this.hooks.onEdgeGrab?.();
     return true;
+  }
+
+  /**
+   * Stepped off the end of a narrow ledge (a window sill) with no wall under that
+   * end: hang on the wall the ledge is fixed to instead, right where you are.
+   */
+  grabSideWall(c) {
+    const p = this.pos;
+    const top = c.max.y;
+    const t = _t;
+    for (const b of ['x', 'z']) {
+      for (const s of [1, -1]) {
+        // Is there a climbable wall just behind us along this axis?
+        t.copy(p);
+        let wall = null;
+        for (let o = 0.1; o < 0.9 && !wall; o += 0.1) {
+          t[b] = p[b] - s * o;
+          wall = this.physics.solidAt(t.x, top - 0.8, t.z);
+        }
+        if (!wall || !wall.climbable || wall === c) continue;
+        t.copy(p);
+        t[b] = (s > 0 ? wall.max[b] : wall.min[b]) + s * (R + EPS);
+        t.y = top - H - 0.02;
+        if (!this.physics.fits(t, R, H)) continue;
+        this.visualOffset.add(p).sub(t);
+        p.copy(t);
+        this.wallN.set(0, 0, 0);
+        this.wallN[b] = s;
+        this.startClimb();
+        this.peakY = p.y;
+        this.hooks.onEdgeGrab?.();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Stepped off a tree's canopy: hang on the trunk just under it, to climb down. */
+  grabTrunk(trunk, layer) {
+    const p = this.pos;
+    const cx = (trunk.min.x + trunk.max.x) / 2;
+    const cz = (trunk.min.z + trunk.max.z) / 2;
+    const a = Math.abs(p.x - cx) > Math.abs(p.z - cz) ? 'x' : 'z';
+    const s = Math.sign(a === 'x' ? p.x - cx : p.z - cz) || 1;
+    const t = _t.set(cx, layer.min.y - H - 0.02, cz);
+    t[a] = (s > 0 ? trunk.max[a] : trunk.min[a]) + s * (R + EPS);
+    // Measured where you stepped off (past the canopy's edge), not beside the trunk.
+    if (layer.max.y - this.physics.floorBelow(p, 0.1) < EDGE_GRAB_DROP) return false;
+    if (!this.physics.fits(t, R, H)) return false;
+    this.visualOffset.add(p).sub(t);
+    p.copy(t);
+    this.wallN.set(0, 0, 0);
+    this.wallN[a] = s;
+    this.startClimb();
+    this.peakY = p.y;
+    this.hooks.onEdgeGrab?.();
+    return true;
+  }
+
+  /** Is a zipline within reach of the top of the hood? Grab it if so. */
+  tryZip() {
+    const lines = this.physics.ziplines;
+    if (!lines?.length) return false;
+    const hx = this.pos.x;
+    const hy = this.pos.y + ZIP_HANG;
+    const hz = this.pos.z;
+    for (const L of lines) {
+      // Coarse search along the string, then you're on.
+      const n = 24;
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n;
+        if (t > L.release - 0.04) break;
+        L.at(t, _zipA);
+        if (Math.hypot(_zipA.x - hx, _zipA.y - hy, _zipA.z - hz) < ZIP_REACH + L.len / n / 2) {
+          // Refine to the nearest point along this short stretch.
+          let best = t;
+          let bestD = Infinity;
+          for (let j = -4; j <= 4; j++) {
+            const tt = Math.max(0, t + (j / 8) / n);
+            L.at(tt, _zipB);
+            const d = Math.hypot(_zipB.x - hx, _zipB.y - hy, _zipB.z - hz);
+            if (d < bestD) { bestD = d; best = tt; }
+          }
+          if (bestD > ZIP_REACH) continue;
+          this.zip = L;
+          this.zipT = best;
+          this.zipV = Math.max(2.5, Math.hypot(this.vel.x, this.vel.z));
+          this.state = 'zip';
+          this.gliding = false;
+          this.autoGlide = false;
+          this.hooks.onZip?.();
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  updateZip(dt) {
+    const L = this.zip;
+    this.zipV += (ZIP_SPEED - this.zipV) * damp(dt, 0.7);
+    this.zipT += (this.zipV * dt) / L.len;
+    const done = this.zipT >= L.release;
+    if (done) this.zipT = L.release;
+    L.at(this.zipT, _zipA);
+    L.at(Math.min(1, this.zipT + 0.01), _zipB);
+    _zipB.sub(_zipA).normalize();
+    const before = _t.copy(this.pos);
+    this.pos.copy(_zipA);
+    this.pos.y -= ZIP_HANG;
+    if (dt > 0) this.vel.subVectors(this.pos, before).divideScalar(dt);
+    this.yaw += wrap(Math.atan2(_zipB.x, _zipB.z) - this.yaw) * damp(dt, TURN_T);
+    if (done || this.jumpBuf > 0) this.releaseZip(this.jumpBuf > 0 && !done);
+  }
+
+  /** Let go: at the end of the string you drop gently; jumping off gives a little hop. */
+  releaseZip(jumped) {
+    this.jumpBuf = 0;
+    this.state = 'move';
+    this.zip = null;
+    this.zipCool = 0.6;
+    this.vel.x *= jumped ? 0.5 : 0.15;
+    this.vel.z *= jumped ? 0.5 : 0.15;
+    this.vel.y = jumped ? 5 : 0.5;
+    this.grounded = false;
+    this.coyote = 0;
+    this.airTime = 0.2;
+    this.peakY = this.pos.y;
+    this.kick(0.25);
   }
 
   startClimb() {
@@ -594,6 +740,7 @@ export class Wanderer {
     let tiltX = 0;
     let tiltZ = 0;
     if (climbing) tiltX = 0.12;
+    else if (this.state === 'zip') tiltX = -0.32; // hanging back, hood to the wind
     else if (this.gliding) tiltX = 0.3;
     else tiltX = clamp(fwdV * 0.025, -0.1, 0.12);
     if (tripping) {
@@ -631,7 +778,7 @@ export class Wanderer {
       m.root.position,
       this.scarfMax > 0 ? this.scarf / this.scarfMax : 0,
       this.scarfMax / 5,
-      this.gliding,
+      this.gliding || this.state === 'zip',
       camPos,
       time,
     );

@@ -11,6 +11,7 @@ const AWNINGS = ['#e46a5a', '#4f9bd9', '#f0bf4c', '#5fb88a', '#c46ad1'];
 const TRIM = '#efe3cf';
 const WINDOW_BOXES = ['#e94f8a', '#4fb3e8', '#7cc243', '#f08a3c', '#f4c430'];
 const FLOWERS = ['#ff5fa2', '#ffe04f', '#ff8a3d', '#b56cff', '#ffffff', '#ff4f6d'];
+const SHUTTERS = ['#2f6f5e', '#1f5f6b', '#9c4a2f', '#2d3f63', '#3f7f4a'];
 
 export const DISTRICT_BOUNDS = [
   [-27, -45, 48, 45], // 0 Piazza & Market Building
@@ -20,7 +21,15 @@ export const DISTRICT_BOUNDS = [
   [-27, -105, 48, -45], // 4 Seven Dials
 ];
 
-export function buildWorld(scene, physics) {
+// opts.seed: which random fragments Seven Dials uses (new each game by default).
+// opts.sdAllCandidates: place a fragment on every candidate spot (for the playtest bot).
+export function buildWorld(scene, physics, opts = {}) {
+  const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
+  let rngState = seed || 1;
+  const rng = () => {
+    rngState = (rngState * 16807) % 2147483647;
+    return (rngState - 1) / 2147483646;
+  };
   const block = (cx, cz, w, d, y, h, color, opts = {}) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), worldMat(color, opts));
     mesh.position.set(cx, y + h / 2, cz);
@@ -96,10 +105,14 @@ export function buildWorld(scene, physics) {
   //       for buildings whose backs are on show.
   // base: build on top of something (e.g. a fly tower on a roof).
   // boxes: painted window boxes full of flowers under every window (Neal's Yard).
+  // shutters: open shutters and a climbable sill at every window (Seven Dials);
+  //   ledges: false drops the continuous cornices, so the sills are the rest points.
+  // sides: dress the two side walls too (for buildings with streets down their sides).
   const building = ({
     x, z, w, d, h, face, back, color, seed = 0, awnings = 2, chimneys = 2, base = 0, surface = 'brick', sign = true,
-    boxes = false,
+    boxes = false, shutters = false, ledges = true, sides = false,
   }) => {
+    const sills = [];
     block(x, z, w, d, base, h, color, { surface });
     block(x, z, w + 0.6, d + 0.6, base + h, 0.35, TRIM, { surface: 'plaster' }); // roof cap overhang
     const top = base + h + 0.35;
@@ -121,13 +134,13 @@ export function buildWorld(scene, physics) {
         const p = at(t, y0, out);
         decorBox(p.x, y0, p.z, alongX ? sa : so, sh, alongX ? so : sa, col, emissive, surf);
       };
-      return { span, alongX, at, onFace, decorFace };
+      return { span, alongX, at, onFace, decorFace, normal: V(n[0], 0, n[1]) };
     };
     // Cornice ledges with glowing window tiles between them, and a drainpipe.
-    const storeys = ({ span, at, onFace, decorFace }, pipeAt) => {
+    const storeys = ({ span, at, onFace, decorFace, normal }, pipeAt) => {
       const ledgeYs = [];
       for (let y = base + 3.2; y < base + h - 1.4; y += 3.2) {
-        onFace(0, y - 0.25, 0.35, span - 1.2, 0.25, 0.7, TRIM, { surface: 'plaster' });
+        if (ledges) onFace(0, y - 0.25, 0.35, span - 1.2, 0.25, 0.7, TRIM, { surface: 'plaster' });
         ledgeYs.push(y);
       }
       const cols = Math.max(2, Math.floor(span / 2.6));
@@ -140,6 +153,13 @@ export function buildWorld(scene, physics) {
             const k = seed + i + Math.round(ly);
             decorFace(t, ly + 0.28, 0.28, 1.2, 0.26, 0.42, WINDOW_BOXES[k % WINDOW_BOXES.length]);
             flowerRow(at, t, ly + 0.54, 0.28, 1.1, k);
+          }
+          if (shutters) {
+            // A sill deep enough to stand on, and a pair of shutters folded open.
+            onFace(t, ly + 0.33, 0.35, 1.3, 0.22, 0.7, TRIM, { surface: 'plaster' });
+            const col = SHUTTERS[(seed + i + Math.round(ly / 3.2)) % SHUTTERS.length];
+            for (const sgn of [-1, 1]) decorFace(t + sgn * 0.74, ly + 0.55, 0.07, 0.42, 1.5, 0.06, col);
+            sills.push({ stand: at(t, ly + 0.55, 0.4), normal: normal.clone(), t, at });
           }
         }
       }
@@ -163,6 +183,14 @@ export function buildWorld(scene, physics) {
       block(sp.x, sp.z, alongX ? 0.12 : 0.9, alongX ? 0.9 : 0.12, base + 4.3, 0.8, AWNINGS[(seed + 3) % AWNINGS.length]);
     }
 
+    if (sides) {
+      const across = alongX ? ['e', 'w'] : ['n', 's'];
+      for (const f of across) {
+        const sw = side(f);
+        storeys(sw, f === 'e' || f === 's' ? 0.5 - 0.5 / sw.span : -0.5 + 0.5 / sw.span);
+      }
+    }
+
     if (back) {
       const rear = side(back);
       storeys(rear, 0.5 - 0.5 / rear.span);
@@ -180,7 +208,7 @@ export function buildWorld(scene, physics) {
       const p = at(t, top, -depth * (0.35 + 0.1 * i));
       block(p.x, p.z, 1.1, 1.1, top, 1.5 + (seed % 3) * 0.4, '#8b5c4a', { surface: 'brick' });
     }
-    return { top, at };
+    return { top, at, sills, front };
   };
 
   // ---------------------------------------------------------- 0: Piazza & Market Building
@@ -517,7 +545,9 @@ export function buildWorld(scene, physics) {
   // ripple passes (and for good once the lantern on top is lit).
   const SD_C = V(10, 0, -72);
   const SD_COLORS = ['#cfd8c8', '#b9897a', '#e3d4b8', '#9fb8ae', '#c48f6a', '#d9c7a3', '#a8a296'];
-  const SD_FRAG_SKIP = 3; // six of the seven wedge roofs hold a fragment
+  const OPPOSITE = { n: 's', s: 'n', e: 'w', w: 'e' };
+  // Wedge buildings: shuttered windows with sills on every side (no cornices), so a
+  // façade is climbed window by window, and the streets between them are dressed.
   const sdRing = [];
   for (let k = 0; k < 7; k++) {
     const a = ((k + 0.5) / 7) * Math.PI * 2; // the wedge between street k and k+1
@@ -527,10 +557,10 @@ export function buildWorld(scene, physics) {
       ? (Math.cos(a) > 0 ? 'w' : 'e')
       : (Math.sin(a) > 0 ? 'n' : 's');
     const b = building({
-      x: cx, z: cz, w: 12, d: 12, h: 11 + ((k * 3) % 4), face, color: SD_COLORS[k], seed: k,
-      surface: k % 2 ? 'brick' : 'plaster',
+      x: cx, z: cz, w: 12, d: 12, h: 11 + ((k * 3) % 4), face, back: OPPOSITE[face], color: SD_COLORS[k], seed: k,
+      surface: k % 2 ? 'brick' : 'plaster', shutters: true, ledges: false, sides: true, sign: false,
     });
-    sdRing.push({ k, front: b.at(0, 0, 3), roof: b.at(0, b.top, -2), frag: b.at(0, b.top + 0.6, -2), top: b.top });
+    sdRing.push({ k, b, x: cx, z: cz, box: { x0: cx - 6, x1: cx + 6, z0: cz - 6, z1: cz + 6 } });
   }
 
   // The sundial pillar: stepped plinth, a tall column, and a hexagonal head with six
@@ -591,15 +621,12 @@ export function buildWorld(scene, physics) {
     chirpLedges.push({ district: 4, center: V(SD_C.x, y, SD_C.z), colliders, mesh });
   }
 
-  // Bollards ring the circus; lamps stand along the streets.
+  // Bollards ring the circus.
   for (let i = 0; i < 14; i++) {
     const a = (i / 14) * Math.PI * 2 + 0.2;
     block(SD_C.x + Math.cos(a) * 9, SD_C.z + Math.sin(a) * 9, 0.35, 0.35, 0, 0.8, '#2f3a3a', { collide: false });
   }
-  for (let k = 1; k < 7; k++) {
-    const a = (k / 7) * Math.PI * 2; // along street k (street 0 is Monmouth Street; kept clear)
-    lamp(SD_C.x + Math.cos(a) * 12.5, SD_C.z + Math.sin(a) * 12.5);
-  }
+  // (No street lamps here: the strings of lights do that job.)
 
   // Cobbles laid in rings round the pillar.
   {
@@ -620,6 +647,173 @@ export function buildWorld(scene, physics) {
     });
     inst.receiveShadow = true;
     scene.add(inst);
+  }
+
+
+  // ---------------------------------------------------------- Seven Dials: ways up and down
+  const BULBS = [['#ffd27a', '#a8701a'], ['#ff9a8a', '#a0402a'], ['#9fe8ff', '#2a7f98'], ['#c6ff9a', '#4f8f2a']];
+  // A string of lights along a sagging curve: dark wire plus bulbs, merged into decor.
+  const lightString = (curveAt, len, idx) => {
+    const n = Math.max(8, Math.round(len * 2));
+    const pts = [];
+    for (let i = 0; i <= n; i++) pts.push(curveAt(i / n, V(0, 0, 0)));
+    addDecor('#2a2a2e', new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), n * 2, 0.03, 4, false));
+    const count = Math.floor(len / 0.9);
+    for (let i = 1; i < count; i++) {
+      const p = curveAt(i / count, V(0, 0, 0));
+      const g = new THREE.SphereGeometry(0.09, 6, 5);
+      g.translate(p.x, p.y - 0.12, p.z);
+      const [col, em] = BULBS[(i + idx) % BULBS.length];
+      addDecor(col, g, em);
+    }
+  };
+  const sagCurve = (a, b, sag) => (t, out) => out.lerpVectors(a, b, t).setY(a.y + (b.y - a.y) * t - sag * 4 * t * (1 - t));
+
+  // Light strings from every wedge roof down to a copper ring on the pillar. Jump at
+  // the pole on the roof edge to catch one and zip down into the circus.
+  const RING_Y = 4.6;
+  {
+    const ring = new THREE.TorusGeometry(1.16, 0.07, 6, 24);
+    ring.rotateX(Math.PI / 2);
+    ring.translate(SD_C.x, RING_Y, SD_C.z);
+    addDecor('#c87533', ring);
+  }
+  const sdZips = sdRing.map((r) => {
+    const f = r.b.front;
+    const a = f.at(0, r.b.top + 1.0, -0.5);
+    const dir = V(SD_C.x - a.x, 0, SD_C.z - a.z).normalize();
+    const b = V(SD_C.x - dir.x * 1.16, RING_Y, SD_C.z - dir.z * 1.16);
+    const len = a.distanceTo(b);
+    const at = sagCurve(a, b, len * 0.05);
+    // Let go once 2.6 m out from the column's centre: clear of the plinth and the ledges.
+    const horiz = Math.hypot(a.x - b.x, a.z - b.z);
+    const release = (horiz - (2.6 - 1.16)) / horiz;
+    const line = { a, b, len, at, release, dir };
+    physics.ziplines.push(line);
+    const pole = f.at(0, r.b.top, -0.5);
+    decorBox(pole.x, r.b.top, pole.z, 0.12, 1.15, 0.12, '#2f3a3a');
+    lightString(at, len, r.k);
+    // Take off from just behind the pole, in line with the string.
+    const roofStand = a.clone().addScaledVector(dir, -1.2).setY(r.b.top);
+    return { ...line, idx: physics.ziplines.length - 1, roofStand, front: f.at(0, 0, 3), top: r.b.top, k: r.k };
+  });
+
+  // Decorative strings across each street, from roof to roof (they're out of reach).
+  const nearestOnBox = (box, p) => V(
+    THREE.MathUtils.clamp(p.x, box.x0, box.x1), 0, THREE.MathUtils.clamp(p.z, box.z0, box.z1),
+  );
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2;
+    const left = sdRing[(k + 6) % 7];
+    const right = sdRing[k];
+    for (const r of [19, 25]) {
+      const mid = V(SD_C.x + Math.cos(a) * r, 0, SD_C.z + Math.sin(a) * r);
+      const pa = nearestOnBox(left.box, mid);
+      const pb = nearestOnBox(right.box, mid);
+      const y = Math.min(left.b.top, right.b.top) - 0.6;
+      pa.y = y;
+      pb.y = y;
+      if (pa.distanceTo(pb) < 2) continue;
+      lightString(sagCurve(pa, pb, 0.6), pa.distanceTo(pb), k + r);
+    }
+  }
+
+  // Tall green trees in the streets, close to a wall: climb the trunk canopy by canopy
+  // nearly to the roofs (then up the wall), or hop down them gently.
+  const sdTrees = [];
+  const boxDist = (box, p) => {
+    const q = nearestOnBox(box, p);
+    return Math.hypot(p.x - q.x, p.z - q.z);
+  };
+  for (let k = 1; k < 7; k++) { // street 0 (Monmouth Street) stays clear
+    const a = (k / 7) * Math.PI * 2;
+    const along = V(Math.cos(a), 0, Math.sin(a));
+    const perp = V(-along.z, 0, along.x);
+    const flank = [sdRing[(k + 6) % 7], sdRing[k]];
+    let found = null;
+    // Search along the street for room for the canopy, right beside a wall.
+    for (let rr = 18; rr <= 32 && !found; rr += 0.5) {
+      for (let off = -3; off <= 3 && !found; off += 0.5) {
+        const p = V(SD_C.x + along.x * rr + perp.x * off, 0.01, SD_C.z + along.z * rr + perp.z * off);
+        const r = flank.reduce((best, f) => (boxDist(f.box, p) < boxDist(best.box, p) ? f : best));
+        const d = boxDist(r.box, p);
+        if (d < 1.55 || d > 2.4) continue;
+        const layers = [];
+        for (let y = 3.4; y <= r.b.top - 2.2; y += 3.4) layers.push(y);
+        const topY = layers[layers.length - 1] + 0.6;
+        if (!physics.fits(p, 1.45, topY)) continue;
+        const wall = nearestOnBox(r.box, p);
+        const nW = Math.abs(p.x - wall.x) > Math.abs(p.z - wall.z)
+          ? V(Math.sign(p.x - wall.x), 0, 0) : V(0, 0, Math.sign(p.z - wall.z));
+        const ground = p.clone().addScaledVector(nW, 2.6);
+        if (!physics.fits(ground, 0.3, 0.62)) continue;
+        found = { r, T: V(p.x, 0, p.z), nW, layers, topY, ground: ground.setY(0) };
+      }
+    }
+    if (!found) continue;
+    const { T, nW, layers, topY } = found;
+    block(T.x, T.z, 0.5, 0.5, 0, topY - 0.6, '#6a4a36', { camera: false, collide: false });
+    const trunk = physics.addBox(T.x, 0, T.z, 0.5, topY - 0.6, 0.5, { camera: false });
+    layers.forEach((y, i) => {
+      const g = new THREE.SphereGeometry(1.55 - i * 0.1, 12, 9);
+      g.scale(1, 0.42, 1);
+      g.translate(T.x + (i % 2 ? 0.15 : -0.15), y + 0.05, T.z);
+      addDecor(['#5f9f55', '#6fb060', '#7fbf6a', '#68a85a'][(i + k) % 4], g);
+      // Step slowly off a canopy and you grab the trunk to climb down (see Wanderer.grabEdge).
+      physics.addBox(T.x, y, T.z, 2.6, 0.6, 2.6, { camera: false }).trunk = trunk;
+    });
+    sdTrees.push({ k, T, nW, topY, ground: found.ground, stand: T.clone().addScaledVector(nW, 1.0) });
+  }
+
+  // Fragment pool: roofs, high window sills, treetops, and the middle of the light
+  // strings (collected mid-zip). Each new game picks six at random.
+  const sdPool = [];
+  // Keep fragments out of the narrow strips hard against the fog walls.
+  const inSD = (p) => p.x > -24.5 && p.x < 45.5 && p.z > -102.5 && p.z < -47.5;
+  for (const r of sdRing) {
+    const f = r.b.front;
+    const t = (rng() - 0.5) * 3;
+    sdPool.push({
+      kind: 'roof', tag: `b${r.k}`, pos: f.at(t, r.b.top + 0.6, -2.2),
+      front: f.at(0, 0, 3), climb: f.at(t, r.b.top, -2.2),
+    });
+    for (const sill of r.b.sills) {
+      if (sill.stand.y < 6) continue;
+      const ground = sill.stand.clone().addScaledVector(sill.normal, 2.6);
+      ground.y = 0;
+      if (!inSD(ground) || !physics.fits(V(ground.x, 0.01, ground.z), 0.4, 0.62)) continue;
+      sdPool.push({
+        kind: 'sill', tag: `b${r.k}`, pos: sill.stand.clone().setY(sill.stand.y + 0.6),
+        ground, climb: sill.stand.clone(), push: [-sill.normal.x, -sill.normal.z],
+      });
+    }
+  }
+  for (const tr of sdTrees) {
+    sdPool.push({
+      kind: 'tree', tag: `t${tr.k}`, pos: V(tr.T.x, tr.topY + 0.6, tr.T.z),
+      ground: tr.ground, climb: tr.stand.clone().setY(tr.topY), push: [-tr.nW.x, -tr.nW.z], top: V(tr.T.x, tr.topY, tr.T.z),
+    });
+  }
+  for (const z of sdZips) {
+    const mid = z.at(0.5, V(0, 0, 0));
+    sdPool.push({
+      kind: 'zip', tag: `b${z.k}`, pos: mid.setY(mid.y - 0.42), front: z.front, climb: z.roofStand.clone().setY(z.top),
+      line: z.idx, dir: [z.dir.x, z.dir.z],
+    });
+  }
+  // Six at random: at most two of a kind, never two on the same building or tree.
+  const sdChosen = [];
+  {
+    const order = sdPool.map((c) => [rng(), c]).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
+    const kinds = {};
+    const tags = new Set();
+    for (const c of order) {
+      if (sdChosen.length === 6) break;
+      if ((kinds[c.kind] ?? 0) >= 2 || tags.has(c.tag)) continue;
+      kinds[c.kind] = (kinds[c.kind] ?? 0) + 1;
+      tags.add(c.tag);
+      sdChosen.push(c);
+    }
   }
 
   // ---------------------------------------------------------- corner groves
@@ -747,9 +941,11 @@ export function buildWorld(scene, physics) {
     nealsyard: fogWall(48, -45, 118, -45),
     north: fogWall(-75, -45, -27, -45),
     sdPiazza: fogWall(-27, -45, 21, -45),
-    // Long Acre: from the junction outside the Opera House's west gate, north into Seven Dials.
+    // Long Acre: from the Piazza's north-east corner (right outside the Opera House's
+    // west gate) north into Seven Dials. Lighting the Piazza opens it.
     sdLongAcre: fogWall(21, -45, 48, -45),
-    sevendials: fogWall(48, -105, 48, -45),
+    // Monmouth Street, between Neal's Yard and Seven Dials: lighting either opens it.
+    monmouth: fogWall(48, -105, 48, -45),
     sdWest: fogWall(-27, -105, -27, -45),
     sdNorth: fogWall(-27, -105, 48, -105),
     nyNorth: fogWall(48, -105, 118, -105),
@@ -797,10 +993,11 @@ export function buildWorld(scene, physics) {
         V(56, NYN[0].top + 0.6, -97), // north-west roof
         V(55, NYW[1].top + 0.6, -67), // west roof by the alley
       ],
-      sdRing.filter((r) => r.k !== SD_FRAG_SKIP).map((r) => r.frag), // Seven Dials roofs
+      (opts.sdAllCandidates ? sdPool : sdChosen).map((c) => c.pos), // Seven Dials, picked at random
     ],
     fogWalls,
     chirpLedges,
-    sevenDials: { center: SD_C, top: SD_TOP, ring: sdRing.filter((r) => r.k !== SD_FRAG_SKIP) },
+    seed,
+    sevenDials: { center: SD_C, top: SD_TOP, fragments: opts.sdAllCandidates ? sdPool : sdChosen, pool: sdPool },
   };
 }

@@ -14,7 +14,7 @@ const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
 export const DISTRICTS = [
   {
-    name: 'The Piazza & Market Building', hue: '#ffb347', fog: '#f1d1a3', maxRadius: 64, unlocks: ['stpauls', 'opera'],
+    name: 'The Piazza & Market Building', hue: '#ffb347', fog: '#f1d1a3', maxRadius: 64, unlocks: ['stpauls', 'opera', 'sdLongAcre'],
     petals: ['#ff9fb2', '#ffc56b', '#ffe1e6', '#ff8a5c'],
   },
   {
@@ -23,17 +23,18 @@ export const DISTRICTS = [
   },
   {
     // Crimson & rose gold. Opens the way to Neal's Yard once that district exists.
-    name: 'Royal Opera House', hue: '#e0405f', fog: '#efd4d0', maxRadius: 90, unlocks: ['nealsyard', 'sdLongAcre'],
+    name: 'Royal Opera House', hue: '#e0405f', fog: '#efd4d0', maxRadius: 90, unlocks: ['nealsyard'],
     petals: ['#c8243f', '#e8a598', '#f2c4b6', '#b76e79'],
   },
   {
     // Lime, pink & sky blue. Opens the way to Seven Dials once that district exists.
-    name: "Neal's Yard", hue: '#8fe05a', fog: '#e4f1dc', maxRadius: 64, unlocks: ['sevendials'],
+    name: "Neal's Yard", hue: '#8fe05a', fog: '#e4f1dc', maxRadius: 64, unlocks: ['monmouth'],
     petals: ['#9be15d', '#f49ac1', '#8ccbf0', '#fff3a8'],
   },
   {
-    // Teal & copper. Lighting it opens a shortcut back into the Piazza; Drury Lane next.
-    name: 'Seven Dials', hue: '#2bb5a8', fog: '#d8ece8', maxRadius: 56, unlocks: ['sdPiazza'],
+    // Teal & copper. Lighting it opens a shortcut back into the Piazza and Monmouth
+    // Street into Neal's Yard; Drury Lane next.
+    name: 'Seven Dials', hue: '#2bb5a8', fog: '#d8ece8', maxRadius: 56, unlocks: ['sdPiazza', 'monmouth'],
     petals: ['#2bb5a8', '#c87533', '#7fc8b5', '#f2e6cf'],
   },
 ];
@@ -399,6 +400,14 @@ export class Game {
     this.fogColor = ASLEEP_FOG.clone();
 
     this.particles = new Particles(scene);
+    // Fog wall name -> the districts whose lantern opens it.
+    this.wallOpeners = new Map();
+    for (const d of this.districts) {
+      for (const name of d.unlocks) {
+        if (!this.wallOpeners.has(name)) this.wallOpeners.set(name, []);
+        this.wallOpeners.get(name).push(d);
+      }
+    }
     this.chirpLedges = (world.chirpLedges ?? []).map((l) => ({ ...l, from: Infinity, until: -Infinity, vis: 0 }));
     this.lastStep = 0;
     this.fxCtx = {
@@ -428,6 +437,10 @@ export class Game {
         audio.land(impact);
         this.particles.puff(wanderer.pos, impact, this.wakeAt(wanderer.pos.x, wanderer.pos.z));
         if (fall > BIG_FALL) this.dropFragments();
+      },
+      onZip: () => {
+        audio.zip?.();
+        this.w.scarfFx.flash = 0.5;
       },
       onAutoGlide: () => {
         audio.unfurl();
@@ -598,17 +611,18 @@ export class Game {
       wakeUniforms.uWakeHue.value[d.id].copy(d.hueColor).multiplyScalar(edge);
     }
 
-    // Fog walls thin as fragments return, then dissolve. A district can open several.
-    for (const d of this.districts) {
-      for (const name of d.unlocks) {
-        const wall = this.world.fogWalls[name];
-        const target = d.lit ? 0 : wall.baseOpacity * (1 - 0.5 * (d.fill / d.needed));
-        const m = wall.mesh.material;
-        m.opacity += (target - m.opacity) * damp(dt, d.lit ? 1.2 : 0.8);
-        if (d.lit && m.opacity < 0.02) {
-          wall.mesh.visible = false;
-          wall.collider.enabled = false;
-        }
+    // Fog walls thin as fragments return, then dissolve. A district can open several
+    // walls, and a wall can be opened by several districts (whichever is lit first).
+    for (const [name, openers] of this.wallOpeners) {
+      const wall = this.world.fogWalls[name];
+      const lit = openers.some((d) => d.lit);
+      const progress = Math.max(...openers.map((d) => d.fill / d.needed));
+      const target = lit ? 0 : wall.baseOpacity * (1 - 0.5 * progress);
+      const m = wall.mesh.material;
+      m.opacity += (target - m.opacity) * damp(dt, lit ? 1.2 : 0.8);
+      if (lit && m.opacity < 0.02) {
+        wall.mesh.visible = false;
+        wall.collider.enabled = false;
       }
     }
     for (const wall of Object.values(this.world.fogWalls)) {
