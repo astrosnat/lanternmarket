@@ -28,19 +28,24 @@ export const DISTRICTS = [
   },
   {
     // Lime, pink & sky blue. Opens the way to Seven Dials once that district exists.
-    name: "Neal's Yard", hue: '#8fe05a', fog: '#e4f1dc', maxRadius: 64, unlocks: ['monmouth', 'shortsGardens', 'sheltonSt'],
+    name: "Neal's Yard", hue: '#8fe05a', fog: '#e4f1dc', maxRadius: 64, unlocks: ['monmouth', 'shortsGardens', 'sheltonSt', 'nyNorth'],
     petals: ['#9be15d', '#f49ac1', '#8ccbf0', '#fff3a8'],
   },
   {
     // Teal & copper. Lighting it opens a shortcut back into the Piazza, Monmouth
     // Street into Neal's Yard, and the way into Drury Lane (from both sides).
-    name: 'Seven Dials', hue: '#2bb5a8', fog: '#d8ece8', maxRadius: 56, unlocks: ['sdPiazza', 'monmouth', 'sheltonSt', 'russellSt'],
+    name: 'Seven Dials', hue: '#2bb5a8', fog: '#d8ece8', maxRadius: 56, unlocks: ['sdPiazza', 'monmouth', 'sheltonSt', 'russellSt', 'sdNorth'],
     petals: ['#2bb5a8', '#c87533', '#7fc8b5', '#f2e6cf'],
   },
   {
-    // Magenta & gold. Opens the way to the Kingsway rooftops once they exist.
-    name: 'Drury Lane theatres', hue: '#d63a9a', fog: '#f2d6e8', maxRadius: 110, unlocks: [],
+    // Magenta & gold. Opens the way to the Kingsway rooftops (up the top of Drury Lane).
+    name: 'Drury Lane theatres', hue: '#d63a9a', fog: '#f2d6e8', maxRadius: 110, unlocks: ['dlNorth'],
     petals: ['#d63a9a', '#f2c14e', '#ff8fd0', '#fff0b8'],
+  },
+  {
+    // Cobalt & white. Opens the way to the Strand once it exists.
+    name: 'Kingsway & High Holborn', hue: '#2f6fe0', fog: '#dde6f5', maxRadius: 150, unlocks: [],
+    petals: ['#2f6fe0', '#ffffff', '#8fb4ff', '#cfe0ff'],
   },
 ];
 

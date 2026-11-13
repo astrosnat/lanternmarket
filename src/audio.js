@@ -384,6 +384,15 @@ export class AudioSys {
         this.brass([chord[0], chord[1], chord[2] + 12][s - 4] + 24, t, STEP * (s === 6 ? 2.5 : 0.9), 0.03, brassL);
       }
     }
+
+    // Layer 6 — Kingsway & High Holborn: an electric piano, warm chords comping on the
+    // off-beats and a little rising arpeggio at the end of each bar.
+    const keys = this.layers.get(6);
+    if (keys) {
+      if (s === 1 || s === 4) for (const m of chord) this.epiano(m + 12, t, STEP * 1.6, 0.022, keys);
+      if (s === 6) this.epiano(chord[0] + 24, t, STEP * 0.9, 0.03, keys);
+      if (s === 7) this.epiano(chord[(bar % 2) + 1] + 24, t, STEP * 0.9, 0.03, keys);
+    }
   }
 
   /** Marimba: a sine bar with its bright 4th-harmonic tick and a quick decay. */
@@ -391,6 +400,34 @@ export class AudioSys {
     const f = mtof(m);
     this.tone({ freq: f, t, dur: 0.55, gain, attack: 0.003, dest });
     this.tone({ freq: f * 4, t, dur: 0.07, gain: gain * 0.35, attack: 0.002, dest });
+  }
+
+  /** Electric piano: a sine tine with a soft bell partial and a slow tremolo. */
+  epiano(m, t, dur, gain, dest) {
+    const ctx = this.ctx;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(gain * 0.35, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.25);
+    const trem = ctx.createOscillator();
+    trem.frequency.value = 4.5;
+    const tg = ctx.createGain();
+    tg.gain.value = gain * 0.25;
+    trem.connect(tg).connect(g.gain);
+    g.connect(dest);
+    const end = t + dur + 0.3;
+    for (const [mul, lvl] of [[1, 1], [2, 0.18], [7.1, 0.05]]) {
+      const o = ctx.createOscillator();
+      o.frequency.value = mtof(m) * mul;
+      const og = ctx.createGain();
+      og.gain.value = lvl;
+      o.connect(og).connect(g);
+      o.start(t);
+      o.stop(end);
+    }
+    trem.start(t);
+    trem.stop(end);
   }
 
   /** Brass: buzzy saws whose filter opens with each attack, like a lip blowing into the bell. */

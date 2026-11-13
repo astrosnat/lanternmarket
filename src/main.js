@@ -166,8 +166,8 @@ requestAnimationFrame(frame);
 if (import.meta.env.DEV) window.__lm = { wanderer, game, follow, physics, scene, camera, sky };
 
 // ------------------------------------------------------------ debug shortcuts (dev server only)
-//   1-6          teleport to a district
-//   Shift + 1-6  light that district (opens the fog walls it unlocks)
+//   1-7          teleport to a district
+//   Shift + 1-7  light that district (opens the fog walls it unlocks)
 //   0            open every fog wall between districts, without lighting anything
 if (import.meta.env.DEV) {
   const SPOTS = [
@@ -177,6 +177,7 @@ if (import.meta.env.DEV) {
     [80, -75], // 4 Neal's Yard (the yard)
     [24, -72], // 5 Seven Dials (by the circus)
     [136, -20], // 6 Drury Lane (the street)
+    [60, -120], // 7 Kingsway & High Holborn (on High Holborn)
   ];
   const openWall = (name) => {
     const wall = world.fogWalls[name];
@@ -189,7 +190,7 @@ if (import.meta.env.DEV) {
       console.log('[debug] opened every fog wall between districts');
       return;
     }
-    const i = /^Digit([1-6])$/.exec(e.code)?.[1] - 1;
+    const i = /^Digit([1-7])$/.exec(e.code)?.[1] - 1;
     if (!(i >= 0)) return;
     const d = game.districts[i];
     if (e.shiftKey) {

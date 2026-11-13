@@ -8,6 +8,7 @@
 //   node tools/playtest.mjs --seed 7         # which random Seven Dials fragments to play
 //   node tools/playtest.mjs --sd-pool        # check every Seven Dials fragment spot is reachable
 //   node tools/playtest.mjs --dl-pool        # ... and every Drury Lane one
+//   node tools/playtest.mjs --kh-pool        # ... and every Kingsway & High Holborn one
 
 import * as THREE from 'three';
 import { execFileSync } from 'node:child_process';
@@ -68,6 +69,7 @@ const seedArg = process.argv.indexOf('--seed');
 const SEED = seedArg > 0 ? Number(process.argv[seedArg + 1]) : 1;
 const SD_POOL = process.argv.includes('--sd-pool');
 const DL_POOL = process.argv.includes('--dl-pool');
+const KH_POOL = process.argv.includes('--kh-pool');
 let learnedGlide = STYLE === 'runner';
 const DT = 1 / 60;
 const SUB = 2;
@@ -79,7 +81,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog('#8d96a6', 22, 110);
 scene.background = new THREE.Color();
 const physics = new Physics();
-const world = buildWorld(scene, physics, { seed: SEED, sdAllCandidates: SD_POOL, dlAllCandidates: DL_POOL });
+const world = buildWorld(scene, physics, { seed: SEED, sdAllCandidates: SD_POOL, dlAllCandidates: DL_POOL, khAllCandidates: KH_POOL });
 const audio = new Proxy({}, { get: () => () => {} });
 const w = new Wanderer(scene, physics);
 w.spawn(world.spawn);
@@ -191,6 +193,8 @@ const zip = (dir) => ({ kind: 'zip', dir });
 const toCircus = () => ({ kind: 'toCircus' });
 // Walk back out onto Drury Lane itself (the street), from wherever you are in the district.
 const toStreet = () => ({ kind: 'toStreet' });
+// Back down onto High Holborn (the road), from wherever you are.
+const toRoad = () => ({ kind: 'toRoad' });
 
 function runGo(leg) {
   const target = new THREE.Vector3(leg.x, leg.y ?? 0, leg.z);
@@ -276,6 +280,10 @@ function runRoute(route) {
     if (leg.kind === 'go') runGo(leg);
     if (leg.kind === 'chirp') runChirp(leg);
     if (leg.kind === 'zip') runZip(leg);
+    if (leg.kind === 'toRoad') {
+      const Z = world.kingsway.road;
+      if (Math.abs(w.pos.z - Z) > 2 || w.pos.y > 0.5) runGo(go(THREE.MathUtils.clamp(w.pos.x, -24, 236), Z));
+    }
     if (leg.kind === 'toStreet') {
       const X = world.drury.street;
       if (Math.abs(w.pos.x - X) > 2 || w.pos.y > 0.5) {
@@ -603,7 +611,54 @@ const ROUTE = [
   chirp(0.3),
   wait(3),
   expect('Drury Lane lantern lit', lit(5)),
+  wait(6),
+  expect('the top of Drury Lane into High Holborn has opened', () => !world.fogWalls.dlNorth.collider.enabled),
+
+  section('Kingsway: down off the fly tower and up Drury Lane into High Holborn'),
+  toStreet(),
+  go(world.drury.street, -100),
+  go(world.drury.street, world.kingsway.road),
+  ...kingswayFragments(),
+
+  section('Kingsway: up the last roof of the run, onto the tower terrace and up its fire escape'),
+  go(205, world.kingsway.road),
+  go(205, -124.4),
+  go(205, -130, 14.55),
+  go(208.5, -133),
+  ...escapeLegs(world.kingsway.escape),
+  go(world.kingsway.lantern.x - 1.3, world.kingsway.lantern.z, world.kingsway.top),
+  chirp(0.3),
+  wait(3),
+  expect('Kingsway & High Holborn lantern lit', lit(6)),
 ];
+
+/** The legs to fetch one Kingsway fragment: out along High Holborn, then to the spot. */
+function kingswayLegs(c) {
+  const Z = world.kingsway.road;
+  const via = (p) => [go(THREE.MathUtils.clamp(p.x, -24, 236), Z)];
+  switch (c.kind) {
+    case 'roof':
+      return [...via(c.front), go(c.front.x, c.front.z), go(c.climb.x, c.climb.z, c.climb.y), chirp()];
+    case 'sill':
+      return [...via(c.ground), go(c.ground.x, c.ground.z), go(c.climb.x, c.climb.z, c.climb.y, c.push), chirp()];
+    case 'zip':
+      return [...via(c.front), go(c.front.x, c.front.z), go(c.climb.x, c.climb.z, c.climb.y), chirp(), zip(c.dir)];
+    default:
+      throw new Error(`unknown spot ${c.kind}`);
+  }
+}
+
+/** All six of this game's Kingsway fragments, west to east. */
+function kingswayFragments() {
+  const order = [...world.kingsway.fragments].sort((p, q) => p.pos.x - q.pos.x);
+  return order.flatMap((c, i) => [
+    section(`Kingsway: fragment ${i + 1} of ${order.length} (${c.kind})`),
+    toRoad(),
+    ...kingswayLegs(c),
+    wait(0.5),
+    expect(`carrying ${i + 1} Kingsway fragment(s)`, carrying(i + 1)),
+  ]);
+}
 
 /** Walk up a fire escape: to the foot of the stairs, then landing by landing. */
 function escapeLegs(path) {
@@ -681,16 +736,16 @@ function sevenDialsFragments() {
 }
 
 const wall0 = Date.now();
-if (SD_POOL || DL_POOL) {
-  const D = SD_POOL ? 4 : 5;
-  const data = SD_POOL ? world.sevenDials : world.drury;
-  const legsFor = SD_POOL ? sevenDialsLegs : druryLegs;
+if (SD_POOL || DL_POOL || KH_POOL) {
+  const D = SD_POOL ? 4 : DL_POOL ? 5 : 6;
+  const data = SD_POOL ? world.sevenDials : DL_POOL ? world.drury : world.kingsway;
+  const legsFor = SD_POOL ? sevenDialsLegs : DL_POOL ? druryLegs : kingswayLegs;
   // Light the earlier districts and open their walls, then try every candidate spot.
   for (let i = 0; i < D; i++) game.lightDistrict(game.districts[i]);
   // --scarf 9: arrive with less (e.g. only the Piazza and the Opera House lit).
   const scarfArg = process.argv.indexOf('--scarf');
   if (scarfArg > 0) w.scarfMax = Number(process.argv[scarfArg + 1]);
-  for (const k of ['stpauls', 'opera', 'shortsGardens', 'monmouth', 'sdLongAcre', 'sheltonSt', 'russellSt']) {
+  for (const k of ['stpauls', 'opera', 'shortsGardens', 'monmouth', 'sdLongAcre', 'sheltonSt', 'russellSt', 'sdNorth', 'nyNorth', 'dlNorth']) {
     world.fogWalls[k].collider.enabled = false;
     world.fogWalls[k].mesh.visible = false;
   }
@@ -714,8 +769,10 @@ if (SD_POOL || DL_POOL) {
     if (SD_POOL) {
       const d = new THREE.Vector3(c.pos.x - C.x, 0, c.pos.z - C.z).normalize();
       w.spawn(new THREE.Vector3(C.x + d.x * 7.5, 0.01, C.z + d.z * 7.5));
-    } else {
+    } else if (DL_POOL) {
       w.spawn(new THREE.Vector3(world.drury.street, 0.01, THREE.MathUtils.clamp(c.pos.z, -100, 40)));
+    } else {
+      w.spawn(new THREE.Vector3(THREE.MathUtils.clamp(c.pos.x, -24, 236), 0.01, world.kingsway.road));
     }
     w.scarf = w.scarfMax;
     const tp = stats.teleports;
@@ -727,7 +784,7 @@ if (SD_POOL || DL_POOL) {
     if (ok) res[c.kind].ok++;
     else fails.push(`${c.kind} ${c.tag} at ${fmt(c.pos)}`);
   });
-  console.log(`\n${SD_POOL ? 'Seven Dials' : 'Drury Lane'} fragment spots reachable (scarf ${w.scarfMax}):`);
+  console.log(`\n${SD_POOL ? 'Seven Dials' : DL_POOL ? 'Drury Lane' : 'Kingsway'} fragment spots reachable (scarf ${w.scarfMax}):`);
   for (const [k, r] of Object.entries(res)) console.log(`  ${k.padEnd(5)} ${r.ok}/${r.n}`);
   if (fails.length) console.log(`Unreachable:\n  ${fails.join('\n  ')}`);
   process.exit(fails.length ? 1 : 0);

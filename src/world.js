@@ -20,11 +20,12 @@ export const DISTRICT_BOUNDS = [
   [48, -105, 118, -45], // 3 Neal's Yard
   [-27, -105, 48, -45], // 4 Seven Dials
   [118, -105, 178, 45], // 5 Drury Lane theatres
+  [-27, -140, 238, -105], // 6 Kingsway & High Holborn
 ];
 
 // opts.seed: which random fragments Seven Dials uses (new each game by default).
-// opts.sdAllCandidates / dlAllCandidates: place a fragment on every candidate spot in
-// Seven Dials / Drury Lane (for the playtest bot's reachability check).
+// opts.sdAllCandidates / dlAllCandidates / khAllCandidates: place a fragment on every
+// candidate spot in Seven Dials / Drury Lane / Kingsway (for the bot's reachability check).
 export function buildWorld(scene, physics, opts = {}) {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   let rngState = seed || 1;
@@ -63,11 +64,13 @@ export function buildWorld(scene, physics, opts = {}) {
   };
 
   // ---------------------------------------------------------- ground
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), worldMat('#b9a68c', { surface: 'plaster' }));
+  // Big enough for every district (x -75..238, z -140..45) with fog-hidden margin.
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(700, 600), worldMat('#b9a68c', { surface: 'plaster' }));
   ground.rotation.x = -Math.PI / 2;
+  ground.position.set(80, 0, -50);
   ground.receiveShadow = true;
   scene.add(ground);
-  physics.addBox(0, -2, 0, 400, 2, 400, { climbable: false });
+  physics.addBox(80, -2, -50, 700, 2, 600, { climbable: false });
 
   // Soft rounded cobble tiles across the Piazza.
   {
@@ -109,13 +112,14 @@ export function buildWorld(scene, physics, opts = {}) {
   // boxes: painted window boxes full of flowers under every window (Neal's Yard).
   // shutters: open shutters and a climbable sill at every window (Seven Dials);
   //   ledges: false drops the continuous cornices, so the sills are the rest points.
+  // climbable: false for walls too smooth to climb (Kingsway's corner tower).
   // sides: dress the two side walls too (for buildings with streets down their sides).
   const building = ({
     x, z, w, d, h, face, back, color, seed = 0, awnings = 2, chimneys = 2, base = 0, surface = 'brick', sign = true,
-    boxes = false, shutters = false, ledges = true, sides = false, roof = 'plaster',
+    boxes = false, shutters = false, ledges = true, sides = false, roof = 'plaster', climbable = true,
   }) => {
     const sills = [];
-    block(x, z, w, d, base, h, color, { surface });
+    block(x, z, w, d, base, h, color, { surface, climbable });
     block(x, z, w + 0.6, d + 0.6, base + h, 0.35, TRIM, { surface: roof }); // roof cap overhang
     const top = base + h + 0.35;
 
@@ -470,9 +474,9 @@ export function buildWorld(scene, physics, opts = {}) {
   ];
   // North row (the signature house goes in the gap at x 82..100).
   const NYN = [
-    building({ x: 58, z: -96, w: 16, d: 12, h: 13, face: 's', color: PAINT[4], seed: 4, ...painted }),
-    building({ x: 74, z: -96, w: 16, d: 12, h: 11, face: 's', color: PAINT[5], seed: 0, ...painted }),
-    building({ x: 108, z: -96, w: 16, d: 12, h: 12, face: 's', color: PAINT[6], seed: 1, ...painted }),
+    building({ x: 58, z: -96, w: 16, d: 12, h: 13, face: 's', back: 'n', color: PAINT[4], seed: 4, ...painted }),
+    building({ x: 74, z: -96, w: 16, d: 12, h: 11, face: 's', back: 'n', color: PAINT[5], seed: 0, ...painted }),
+    building({ x: 108, z: -96, w: 16, d: 12, h: 12, face: 's', back: 'n', color: PAINT[6], seed: 1, ...painted }),
   ];
   // West and east rows.
   const NYW = [
@@ -1115,6 +1119,181 @@ export function buildWorld(scene, physics, opts = {}) {
     }
   }
 
+
+  // ---------------------------------------------------------- 6: Kingsway & High Holborn
+  // A long strip along the north of the map (x -27..238, z -140..-105), behind Seven
+  // Dials, Neal's Yard and Drury Lane. High Holborn runs east-west down the middle
+  // (z -124..-116); Kingsway meets it at the east end. Signature: the long rooftop run
+  // along the north side, from roof to roof, ending at a white corner tower whose smooth
+  // stone can't be climbed: you reach it from the last roof, then up its fire escape.
+  const KH_ROAD = -120;
+  const COBALT = '#2f5fbf';
+  const KH_PAINT = ['#eef0f2', '#e3e6ea', '#d9dde3', '#f2efe8', '#dfe4ec', '#e8e4dc'];
+
+  // North side: the rooftop run, rising gently eastwards with jumpable gaps and steps.
+  const RUN = [
+    [-25, -13, 9], [-11, 1, 9.5], [1, 13, 10], [15, 29, 10.5], [29, 41, 11], [43.5, 55, 11.5], [55, 67, 12],
+    [69, 83, 12.5], [83, 95, 12.8], [97.5, 111, 12.5], [111, 125, 13], [127, 141, 13], [143.5, 155, 13],
+    [155, 167, 13.3], [172, 184, 13.3], [184, 197, 13.8], [199, 210, 14.2],
+  ].map(([x0, x1, h], i) => building({
+    x: (x0 + x1) / 2, z: -132.5, w: x1 - x0, d: 11, h, face: 's', color: KH_PAINT[i % KH_PAINT.length], seed: i,
+    awnings: 1 + (i % 2),
+  }));
+  // A plank bridge over the one gap too wide to jump (167..172).
+  {
+    const y = RUN[13].top;
+    block(169.5, -132.5, 5.2, 0.7, y - 0.1, 0.12, '#8a6a4a', { surface: 'plaster', camera: false });
+    for (const dz of [-0.4, 0.4]) decorBox(169.5, y + 0.02, -132.5 + dz, 5.2, 0.06, 0.06, '#5a4632');
+  }
+
+  // The corner tower at Kingsway: smooth white stone (no climbing), cobalt bands, with
+  // a lower terrace wing that touches the last roof of the run.
+  const TERRACE = building({
+    x: 213, z: -132.5, w: 6, d: 11, h: 14.5, face: 's', color: '#f4f4f2', seed: 7, awnings: 0, chimneys: 0, sign: false,
+  });
+  const TOWER = building({
+    x: 226, z: -130, w: 20, d: 16, h: 22, face: 'w', color: '#f6f6f4', seed: 3, awnings: 0, chimneys: 0, sign: false,
+    surface: 'stone', ledges: false, climbable: false,
+  }); // x 216..236, z -138..-122
+  for (const y of [4, 9, 14, 19]) TOWER.front.decorFace(0, y, 0.04, 19.6, 0.35, 0.08, COBALT);
+  for (const f of ['n', 's', 'e']) {
+    const sd = TOWER.side(f);
+    for (const y of [4, 9, 14, 19]) sd.decorFace(0, y, 0.04, sd.span - 0.4, 0.35, 0.08, COBALT);
+  }
+  const TOWER_TOP = TOWER.top;
+  const towerEscape = fireEscape(TOWER.side('w'), -7, 1, TERRACE.top, TOWER_TOP);
+
+  // South side: terraces facing the road, with gaps where the neighbours come in (from
+  // Seven Dials, the strip from Neal's Yard, and the top of Drury Lane itself).
+  const SOUTH = [
+    [-25, -13, 10], [-13, -1, 10.5], [9, 21, 9.5], [21, 33, 11], [53, 67, 10], [67, 81, 11], [81, 95, 10.5],
+    [95, 109, 11.5], [109, 123, 10], [143, 157, 11], [157, 171, 10.5],
+  ].map(([x0, x1, h], i) => building({
+    x: (x0 + x1) / 2, z: -110, w: x1 - x0, d: 8, h, face: 'n', back: 's', color: KH_PAINT[(i + 3) % KH_PAINT.length],
+    seed: i + 2, awnings: 1,
+  }));
+  // Holborn station, with its roundel.
+  const STATION = building({
+    x: 200, z: -110, w: 24, d: 8, h: 7, face: 'n', color: '#f2f2f0', seed: 5, awnings: 0, chimneys: 0, sign: false,
+    surface: 'stone',
+  });
+  STATION.front.decorFace(0, 3.4, 0.05, 23.6, 0.6, 0.1, COBALT);
+  {
+    const p = STATION.front.at(0, 5.3, 0.12);
+    const ring = new THREE.TorusGeometry(0.85, 0.16, 8, 24);
+    ring.translate(p.x, p.y, p.z);
+    addDecor('#c8202f', ring);
+    const bar = new THREE.BoxGeometry(2.4, 0.42, 0.12);
+    bar.translate(p.x, p.y, p.z + 0.05);
+    addDecor(COBALT, bar);
+  }
+
+  // Strings of lights across High Holborn: from the run's roofs down to the far side.
+  const khZips = [];
+  for (const [ri, si, x] of [[3, 2, 18], [6, 4, 60], [9, 7, 100], [12, 9, 150]]) {
+    const r = RUN[ri];
+    const a = V(x, r.top + 1.0, -127.5);
+    const b = V(x, 5.4, -114.15);
+    const len = a.distanceTo(b);
+    const at = sagCurve(a, b, len * 0.05);
+    const horiz = Math.hypot(a.x - b.x, a.z - b.z);
+    const dir = V(b.x - a.x, 0, b.z - a.z).normalize();
+    const line = { a, b, len, at, release: 1 - 1.3 / horiz, dir };
+    physics.ziplines.push(line);
+    decorBox(x, r.top, -127.5, 0.12, 1.15, 0.12, DL_IRON);
+    lightString(at, len, khZips.length + 5);
+    khZips.push({
+      ...line, idx: physics.ziplines.length - 1, roofStand: a.clone().addScaledVector(dir, -1.2).setY(r.top),
+      front: V(x, 0, -124.4), top: r.top, x, si,
+    });
+  }
+
+  // Double-decker buses parked on High Holborn, and red phone boxes: stepping stones.
+  const khPerches = [];
+  for (const x of [80, 186]) {
+    block(x, KH_ROAD, 10, 2.5, 0.35, 4.1, '#c8202f', { surface: 'plaster' });
+    for (let k = 0; k < 5; k++) {
+      for (const side of [-1, 1]) {
+        decorBox(x - 4 + k * 2, 1.4, KH_ROAD + side * 1.27, 1.5, 0.9, 0.04, '#ffd88a', '#6e4a10', 'glass');
+        decorBox(x - 4 + k * 2, 3.0, KH_ROAD + side * 1.27, 1.5, 0.9, 0.04, '#ffd88a', '#6e4a10', 'glass');
+      }
+    }
+    for (const dx of [-3.4, 3.4]) {
+      for (const side of [-1, 1]) {
+        const wheel = new THREE.CylinderGeometry(0.5, 0.5, 0.3, 12);
+        wheel.rotateX(Math.PI / 2);
+        wheel.translate(x + dx, 0.5, KH_ROAD + side * 1.15);
+        addDecor('#1e1e22', wheel);
+      }
+    }
+    khPerches.push({ tag: `bus${x}`, top: 4.45, stand: V(x, 4.45, KH_ROAD - 1.25 + 0.3), ground: V(x, 0, KH_ROAD - 3.4), push: [0, 1] });
+  }
+  for (const x of [40, 136, 176]) {
+    const z = -115.2;
+    block(x, z, 1.0, 1.0, 0, 2.5, '#c8202f', { surface: 'plaster' });
+    decorBox(x, 0.9, z - 0.51, 0.7, 1.3, 0.04, '#ffd88a', '#6e4a10', 'glass');
+    const crown = new THREE.SphereGeometry(0.45, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    crown.scale(1, 0.4, 1);
+    crown.translate(x, 2.5, z);
+    addDecor('#c8202f', crown);
+    khPerches.push({ tag: `phone${x}`, top: 2.5, stand: V(x, 2.5, z - 0.5 + 0.3), ground: V(x, 0, z - 2.6), push: [0, 1] });
+  }
+  [[-20, -125.2], [26, -125.2], [70, -114.8], [118, -125.2], [164, -114.8], [204, -125.2]].forEach(([x, z]) => lamp(x, z));
+
+  // Cobbles.
+  {
+    const tile = new THREE.BoxGeometry(1.8, 0.05, 1.8);
+    const spots = [];
+    for (let x = -26; x <= 237; x += 2) for (let z = -139; z <= -106; z += 2) {
+      if (physics.fits(V(x, 0.01, z), 0.9, 0.04)) spots.push([x, z]);
+    }
+    const inst = new THREE.InstancedMesh(tile, worldMat('#ffffff', { surface: 'plaster' }), spots.length);
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    const tones = ['#c3c7cf', '#b9bec8', '#cdd1d8', '#b3b9c4', '#c7c9cc'];
+    spots.forEach(([x, z], i) => {
+      m.makeTranslation(x, 0.025, z);
+      inst.setMatrixAt(i, m);
+      inst.setColorAt(i, c.set(tones[Math.abs(i * 7 + x * 3 + z * 13) % tones.length]));
+    });
+    inst.receiveShadow = true;
+    scene.add(inst);
+  }
+
+  // Fragment pool: the run's roofs and the south roofs, bus and phone-box tops, and the
+  // strings across the road. Six at random each game.
+  const khPool = [];
+  for (const [list, side] of [[RUN, 'n'], [SOUTH, 's']]) {
+    list.forEach((b, i) => {
+      const f = b.front;
+      const t = (rng() - 0.5) * f.span * 0.4;
+      khPool.push({ kind: 'roof', tag: `${side}${i}`, pos: f.at(t, b.top + 0.6, -2.2), front: f.at(t, 0, 3.6), climb: f.at(t, b.top, -2.2) });
+    });
+  }
+  for (const p of khPerches) {
+    khPool.push({ kind: 'sill', tag: p.tag, pos: p.stand.clone().setY(p.top + 0.6), ground: p.ground, climb: p.stand, push: p.push });
+  }
+  for (const zl of khZips) {
+    const mid = zl.at(0.5, V(0, 0, 0));
+    khPool.push({
+      kind: 'zip', tag: `zip${zl.x}`, pos: mid.setY(mid.y - 0.42), front: zl.front, climb: zl.roofStand.clone(),
+      line: zl.idx, dir: [zl.dir.x, zl.dir.z],
+    });
+  }
+  const khChosen = [];
+  {
+    const order = khPool.map((c) => [rng(), c]).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
+    const kinds = {};
+    const tags = new Set();
+    for (const c of order) {
+      if (khChosen.length === 6) break;
+      if ((kinds[c.kind] ?? 0) >= 2 || tags.has(c.tag)) continue;
+      kinds[c.kind] = (kinds[c.kind] ?? 0) + 1;
+      tags.add(c.tag);
+      khChosen.push(c);
+    }
+  }
+
   // ---------------------------------------------------------- corner groves
   // Little round trees filling the empty corners between the terraces and the fog.
   // Every tree is merged into one mesh per colour; canopies are climbable like the
@@ -1247,6 +1426,7 @@ export function buildWorld(scene, physics, opts = {}) {
     // Monmouth Street, between Neal's Yard and Seven Dials: lighting either opens it.
     monmouth: fogWall(48, -105, 48, -45),
     sdWest: fogWall(-27, -105, -27, -45),
+    // Into Kingsway & High Holborn: from Seven Dials, Neal's Yard and Drury Lane.
     sdNorth: fogWall(-27, -105, 48, -105),
     nyNorth: fogWall(48, -105, 118, -105),
     // Into Drury Lane: Shelton Street from Neal's Yard, Russell Street from the Opera House.
@@ -1254,6 +1434,10 @@ export function buildWorld(scene, physics, opts = {}) {
     russellSt: fogWall(118, -45, 118, 45),
     south: fogWall(-75, 45, 178, 45),
     dlNorth: fogWall(118, -105, 178, -105),
+    khSouthEast: fogWall(178, -105, 238, -105),
+    khWest: fogWall(-27, -140, -27, -105),
+    khNorth: fogWall(-27, -140, 238, -140),
+    khEast: fogWall(238, -140, 238, -105),
     east: fogWall(178, -105, 178, 45),
     west: fogWall(-75, -45, -75, 45),
   };
@@ -1269,7 +1453,7 @@ export function buildWorld(scene, physics, opts = {}) {
   const p = (b, t, y, out) => b.at(t, y, out);
   return {
     spawn: V(0, 0.72, 15),
-    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0), V(66, 14.6, -26), V(91, SIG_TOP, -96), V(SD_C.x, SD_TOP, SD_C.z), V(160, FLY_TOP, -24)],
+    lanterns: [V(0, 9.8, 0), V(-54, 17.5, 0), V(66, 14.6, -26), V(91, SIG_TOP, -96), V(SD_C.x, SD_TOP, SD_C.z), V(160, FLY_TOP, -24), V(226, TOWER_TOP, -130)],
     fragmentSpots: [
       [
         V(-12, 9.0, 4), // market glass roof, west end
@@ -1298,11 +1482,16 @@ export function buildWorld(scene, physics, opts = {}) {
       ],
       (opts.sdAllCandidates ? sdPool : sdChosen).map((c) => c.pos), // Seven Dials, picked at random
       (opts.dlAllCandidates ? dlPool : dlChosen).map((c) => c.pos), // Drury Lane, picked at random
+      (opts.khAllCandidates ? khPool : khChosen).map((c) => c.pos), // Kingsway, picked at random
     ],
     fogWalls,
     chirpLedges,
     seed,
     sevenDials: { center: SD_C, top: SD_TOP, fragments: opts.sdAllCandidates ? sdPool : sdChosen, pool: sdPool },
+    kingsway: {
+      road: KH_ROAD, top: TOWER_TOP, lantern: V(226, TOWER_TOP, -130), escape: towerEscape,
+      fragments: opts.khAllCandidates ? khPool : khChosen, pool: khPool,
+    },
     drury: {
       street: DL_STREET, top: FLY_TOP, lantern: V(160, FLY_TOP, -24), escapes: ESC,
       fragments: opts.dlAllCandidates ? dlPool : dlChosen, pool: dlPool,
